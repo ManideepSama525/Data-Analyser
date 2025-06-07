@@ -1,5 +1,7 @@
 streamlit
+gspread
+oauth2client
+bcrypt
 pandas
 seaborn
 matplotlib
-bcrypt
