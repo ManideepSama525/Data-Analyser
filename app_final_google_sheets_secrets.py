@@ -16,6 +16,8 @@ creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
 sheet = client.open_by_key("1DFQst-DQMplGel6OxfpSM1K_48rDJpT48Y8Ur79d8g").sheet1
 
+
+
 # -------------------------------
 # Helper Functions
 # -------------------------------
