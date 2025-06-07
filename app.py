@@ -8,7 +8,7 @@ import pandas as pd
 # Google Sheets Setup
 # -------------------------------
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-CREDS_FILE = "streamlit-user-auth-bafb09360eed.json"  # Make sure this file is in the same directory
+CREDS_FILE = "streamlit-user-auth-bafb09360eed.json"  # Must be in same directory
 SHEET_NAME = "user_database"
 
 # Authorize and connect to the sheet
@@ -34,6 +34,14 @@ def verify_user(username, password):
     users = get_users()
     if username in users:
         return bcrypt.checkpw(password.encode(), users[username].encode())
+    return False
+
+def delete_user(username):
+    users = sheet.get_all_records()
+    for i, user in enumerate(users, start=2):  # Row 1 is header
+        if user['username'] == username:
+            sheet.delete_row(i)
+            return True
     return False
 
 # -------------------------------
@@ -83,3 +91,27 @@ else:
 
     st.header("🎉 Welcome to the Protected Area!")
     st.write("You can now add your CSV upload and analysis features here.")
+
+    # -------------------------------
+    # Admin-only Controls
+    # -------------------------------
+    if st.session_state.username == "admin":
+        st.sidebar.title("🛠 Admin Panel")
+
+        # View all users
+        if st.sidebar.checkbox("👥 View All Users"):
+            users = get_users()
+            st.sidebar.write("Registered Users:")
+            st.sidebar.json(list(users.keys()))
+
+        # Delete user
+        users = get_users()
+        user_list = [u for u in users if u != "admin"]
+        if st.sidebar.checkbox("🗑 Delete a User"):
+            user_to_delete = st.sidebar.selectbox("Select user", user_list)
+            if st.sidebar.button("Confirm Delete"):
+                if delete_user(user_to_delete):
+                    st.sidebar.success(f"Deleted user: {user_to_delete}")
+                    st.experimental_rerun()
+                else:
+                    st.sidebar.error("User not found or could not delete.")
