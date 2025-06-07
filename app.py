@@ -88,7 +88,7 @@ if not st.session_state.logged_in:
                 st.session_state.username = username
                 st.success(f"Welcome, {username}! Logging you in...")
                 time.sleep(1)
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid username or password.")
 
