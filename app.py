@@ -93,6 +93,67 @@ else:
     st.write("You can now add your CSV upload and analysis features here.")
 
     # -------------------------------
+    # CSV Upload and Analysis
+    # -------------------------------
+    st.subheader("📁 Upload and Analyze CSV")
+    uploaded_file = st.file_uploader("Choose a CSV file", type="csv")
+
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        st.write("📄 Preview of Data:")
+        st.dataframe(df, use_container_width=True)
+
+        st.write("📊 Summary Statistics:")
+        st.write(df.describe(include='all'))
+
+        with st.expander("📌 Data Info"):
+            info = pd.DataFrame({
+                'Data Type': df.dtypes,
+                'Missing Values': df.isnull().sum(),
+                'Unique Values': df.nunique()
+            })
+            st.dataframe(info)
+
+        st.subheader("📊 Visualization")
+        plot_type = st.selectbox("Choose Plot Type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie Chart"])
+        num_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+        cat_cols = df.select_dtypes(include=['object']).columns.tolist()
+
+        import seaborn as sns
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+        if plot_type == "Scatter" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols, key="scatter_x")
+            y = st.selectbox("Y-axis", num_cols, key="scatter_y")
+            sns.scatterplot(data=df, x=x, y=y, ax=ax)
+        elif plot_type == "Line" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols, key="line_x")
+            y = st.selectbox("Y-axis", num_cols, key="line_y")
+            sns.lineplot(data=df, x=x, y=y, ax=ax)
+        elif plot_type == "Histogram" and num_cols:
+            col = st.selectbox("Select column", num_cols, key="hist_col")
+            sns.histplot(df[col], bins=30, kde=True, ax=ax)
+        elif plot_type == "Box" and num_cols:
+            col = st.selectbox("Select column", num_cols, key="box_col")
+            sns.boxplot(y=df[col], ax=ax)
+        elif plot_type == "Heatmap" and len(num_cols) >= 2:
+            sns.heatmap(df[num_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        elif plot_type == "Pie Chart" and cat_cols:
+            col = st.selectbox("Select column", cat_cols, key="pie_col")
+            pie_data = df[col].value_counts()
+            plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=140)
+            plt.axis("equal")
+
+        st.pyplot(fig)
+        # Download filtered or original data
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Download CSV", csv, "analyzed_data.csv", "text/csv")
+
+
+
+    # -------------------------------
     # Admin-only Controls
     # -------------------------------
     if st.session_state.username == "admin":
@@ -115,3 +176,5 @@ else:
                     st.experimental_rerun()
                 else:
                     st.sidebar.error("User not found or could not delete.")
+
+ 
