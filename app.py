@@ -4,15 +4,41 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import bcrypt
 import time
+import json
+import os
 
 # -------------------------------
-# 🔐 User Database (hashed)
+# 🔐 Persistent User Storage
 # -------------------------------
-users = {
-    "admin": bcrypt.hashpw("admin123".encode(), bcrypt.gensalt()).decode(),
-    "alice": bcrypt.hashpw("alicepwd".encode(), bcrypt.gensalt()).decode(),
-    "bob": bcrypt.hashpw("bobsecure".encode(), bcrypt.gensalt()).decode(),
-}
+USER_FILE = "users.json"
+SETTINGS_FILE = "settings.json"
+
+# Load users from file
+def load_users():
+    if os.path.exists(USER_FILE):
+        with open(USER_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+# Save users to file
+def save_users(users):
+    with open(USER_FILE, "w") as f:
+        json.dump(users, f)
+
+# Load settings from file
+def load_settings():
+    if os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE, "r") as f:
+            return json.load(f)
+    return {"allow_signup": True}
+
+# Save settings to file
+def save_settings(settings):
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(settings, f)
+
+users = load_users()
+settings = load_settings()
 
 # ----------------------------------
 # Streamlit Page Config
@@ -29,7 +55,7 @@ if "username" not in st.session_state:
 st.sidebar.button("🔁 Reset App", on_click=lambda: st.session_state.clear())
 
 # ----------------------------------
-# Login Logic
+# Authentication Logic
 # ----------------------------------
 def verify_user(username, password):
     if username in users:
@@ -37,21 +63,47 @@ def verify_user(username, password):
         return bcrypt.checkpw(password.encode(), hashed)
     return False
 
+# ----------------------------------
+# Login / Signup Interface
+# ----------------------------------
 if not st.session_state.logged_in:
-    st.title("🔐 Secure Login to Data Analyzer")
+    st.title("🔐 Secure Access to Data Analyzer")
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    tab1, tab2 = st.tabs(["🔓 Login", "🆕 Sign Up"])
 
-    if st.button("Login"):
-        if verify_user(username, password):
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.success(f"Welcome, {username}! Logging you in...")
-            time.sleep(1)
-            st.experimental_rerun()
+    # --- Login Tab ---
+    with tab1:
+        username = st.text_input("Username", key="login_user")
+        password = st.text_input("Password", type="password", key="login_pass")
+
+        if st.button("Login"):
+            if verify_user(username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.success(f"Welcome, {username}! Logging you in...")
+                time.sleep(1)
+                st.experimental_rerun()
+            else:
+                st.error("Invalid username or password.")
+
+    # --- Sign Up Tab ---
+    with tab2:
+        if settings.get("allow_signup", True):
+            new_user = st.text_input("New Username", key="signup_user")
+            new_pass = st.text_input("New Password", type="password", key="signup_pass")
+
+            if st.button("Create Account"):
+                if new_user in users:
+                    st.warning("Username already exists. Please choose a different one.")
+                elif new_user.strip() == "" or new_pass.strip() == "":
+                    st.warning("Username and password cannot be empty.")
+                else:
+                    hashed_pw = bcrypt.hashpw(new_pass.encode(), bcrypt.gensalt()).decode()
+                    users[new_user] = hashed_pw
+                    save_users(users)
+                    st.success("Account created! You can now log in.")
         else:
-            st.error("Invalid username or password.")
+            st.warning("🛑 Signup is currently disabled by the admin.")
 
 # ----------------------------------
 # Main App (after login)
@@ -63,6 +115,39 @@ else:
         st.session_state.username = ""
         st.experimental_rerun()
 
+    # ---------------------
+    # 🛠 Admin Panel
+    # ---------------------
+    if st.session_state.username == "admin":
+        st.sidebar.title("🛠 Admin Panel")
+
+        # Toggle signup
+        allow_signup = settings.get("allow_signup", True)
+        signup_toggle = st.sidebar.checkbox("✅ Allow User Signup", value=allow_signup)
+        if signup_toggle != allow_signup:
+            settings["allow_signup"] = signup_toggle
+            save_settings(settings)
+            st.sidebar.success("Signup setting updated.")
+
+        # View all users
+        if st.sidebar.checkbox("👥 View All Users"):
+            st.sidebar.subheader("Registered Users")
+            st.sidebar.json(list(users.keys()))
+
+        # Delete user
+        if st.sidebar.checkbox("🗑 Delete a User"):
+            user_list = [u for u in users if u != "admin"]
+            user_to_delete = st.sidebar.selectbox("Select User", user_list)
+            if st.sidebar.button("Delete Selected User"):
+                if user_to_delete in users:
+                    del users[user_to_delete]
+                    save_users(users)
+                    st.sidebar.success(f"User '{user_to_delete}' deleted.")
+                    st.experimental_rerun()
+
+    # ---------------------
+    # 📊 Main Data Analyzer
+    # ---------------------
     st.title("📊 Data Analyzer")
     st.markdown("Upload one or more CSV files to explore and visualize your data.")
     uploaded_files = st.file_uploader("Choose CSV files", type="csv", accept_multiple_files=True)
