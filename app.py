@@ -85,12 +85,10 @@ if not st.session_state.logged_in:
 else:
     st.sidebar.success(f"Logged in as {st.session_state.username}")
     if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.experimental_rerun()
+    st.session_state.logged_in = False
+    st.session_state.username = ""
+    st.success("You have been logged out. Please click 'Reset App' or refresh the page.")
 
-    st.header("🎉 Welcome to the Protected Area!")
-    st.write("You can now add your CSV upload and analysis features here.")
 
     # -------------------------------
     # CSV Upload and Analysis
