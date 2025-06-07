@@ -7,6 +7,12 @@ import time
 import json
 import os
 
+#Session state initialization
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+
 # -------------------------------
 # 🔐 Persistent User Storage
 # -------------------------------
