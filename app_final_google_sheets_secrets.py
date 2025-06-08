@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # Google Sheets Setup via TOML file
 # -------------------------------
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_dict = toml.load("gcp_service_account.toml")
+creds_dict = st.secrets["google_sheets"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
 sheet = client.open("user_database").sheet1
