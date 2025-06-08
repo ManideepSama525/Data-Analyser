@@ -47,6 +47,21 @@ def add_user(username, password):
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     sheet.append_row([username, hashed])
 
+def delete_user(username):
+    all_data = sheet.get_all_values()
+    for i, row in enumerate(all_data):
+        if row[0] == username:
+            sheet.delete_row(i + 1)
+            break
+
+def reset_password(username, new_password):
+    all_data = sheet.get_all_values()
+    for i, row in enumerate(all_data):
+        if row[0] == username:
+            hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+            sheet.update_cell(i + 1, 2, hashed)
+            break
+
 def validate_login(username, password):
     users = get_users()
     if username in users:
@@ -86,10 +101,10 @@ def csv_analyzer():
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
 
-        # Record history
         st.session_state.upload_history.append({
             "filename": uploaded_file.name,
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "uploaded_by": st.session_state.username
         })
 
         st.subheader("CSV Data")
@@ -103,7 +118,6 @@ def csv_analyzer():
         st.subheader("Summary")
         st.write(df.describe())
 
-        # Plot options
         st.subheader("Plot Data")
         columns = df.select_dtypes(include='number').columns.tolist()
         if len(columns) >= 1:
@@ -121,12 +135,10 @@ def csv_analyzer():
 
             st.pyplot(fig)
 
-            # Export Plot
             buf = io.BytesIO()
             fig.savefig(buf, format="png")
             st.download_button("Download Plot", buf.getvalue(), file_name="plot.png")
 
-    # Upload History
     if st.session_state.upload_history:
         st.sidebar.subheader("Upload History")
         history_df = pd.DataFrame(st.session_state.upload_history)
@@ -138,8 +150,31 @@ def csv_analyzer():
 def admin_controls():
     st.subheader("\U0001F4BB Admin Panel")
     users = get_users()
-    st.write("**Registered Users**")
-    st.dataframe(pd.DataFrame(users.items(), columns=["Username", "Hashed Password"]))
+    df_users = pd.DataFrame(users.items(), columns=["Username", "Hashed Password"])
+    st.dataframe(df_users)
+
+    st.markdown("### Delete User")
+    user_to_delete = st.selectbox("Select user to delete", list(users.keys()))
+    if st.button("Delete User"):
+        if user_to_delete != "admin":
+            delete_user(user_to_delete)
+            st.success(f"Deleted user: {user_to_delete}")
+            st.rerun()
+        else:
+            st.warning("Cannot delete admin user")
+
+    st.markdown("### Reset User Password")
+    user_to_reset = st.selectbox("Select user to reset password", list(users.keys()), key="reset")
+    new_pass = st.text_input("Enter new password", key="new_pass")
+    if st.button("Reset Password"):
+        if user_to_reset:
+            reset_password(user_to_reset, new_pass)
+            st.success(f"Password reset for {user_to_reset}")
+
+    if st.session_state.upload_history:
+        st.markdown("### Uploads By User")
+        history_df = pd.DataFrame(st.session_state.upload_history)
+        st.dataframe(history_df)
 
 # -------------------------
 # App Entry Point
