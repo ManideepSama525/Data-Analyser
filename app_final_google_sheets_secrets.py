@@ -9,8 +9,7 @@ import datetime
 import io
 
 # Apply custom visual theme
-st.markdown(""""""")
-
+st.markdown("""
 <style>
     body {
         background-color: #0e1117;
@@ -46,19 +45,12 @@ st.markdown(""""""")
         color: white !important;
     }
 
-    .css-1d391kg {  /* Sidebar */
-        background-color: #1a1a1a;
-    }
-
-    .css-18ni7ap {
-        background-color: #1a1a1a;
-    }
-
-    .css-1v3fvcr {
+    .css-1d391kg, .css-18ni7ap, .css-1v3fvcr {
         background-color: #1a1a1a;
     }
 </style>
-""""""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)
+
 
 # Google Sheets auth
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
