@@ -1,187 +1,232 @@
 import streamlit as st
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import bcrypt
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import bcrypt
-import gspread
+import datetime
 import io
-from datetime import datetime
-from oauth2client.service_account import ServiceAccountCredentials
-from PIL import Image
 
-# -------------------------
-# Google Sheets Auth Setup
-# -------------------------
+# Apply custom visual theme
+st.markdown(""""""")
+
+<style>
+    body {
+        background-color: #0e1117;
+        color: #ffffff;
+    }
+
+    h1, h2, h3, h4 {
+        color: #61dafb;
+    }
+
+    .stApp {
+        font-family: 'Segoe UI', sans-serif;
+        padding: 1rem;
+    }
+
+    .stButton>button {
+        background-color: #00b4d8;
+        color: white;
+        border-radius: 10px;
+        height: 3em;
+        font-weight: bold;
+    }
+
+    .stDownloadButton>button {
+        background-color: #0077b6;
+        color: white;
+        border-radius: 8px;
+        height: 3em;
+    }
+
+    .stSelectbox>div>div {
+        background-color: #1a1a1a !important;
+        color: white !important;
+    }
+
+    .css-1d391kg {  /* Sidebar */
+        background-color: #1a1a1a;
+    }
+
+    .css-18ni7ap {
+        background-color: #1a1a1a;
+    }
+
+    .css-1v3fvcr {
+        background-color: #1a1a1a;
+    }
+</style>
+""""""", unsafe_allow_html=True)
+
+# Google Sheets auth
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = st.secrets["google_sheets"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
 sheet = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g").sheet1
 
-# -------------------------
-# Session State Init
-# -------------------------
+# Session defaults
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = ""
+if "uploaded_files" not in st.session_state:
+    st.session_state.uploaded_files = []
 if "upload_history" not in st.session_state:
     st.session_state.upload_history = []
-if "theme" not in st.session_state:
-    st.session_state.theme = "Dark"
 
-# -------------------------
-# Theme Toggle
-# -------------------------
-with st.sidebar:
-    st.radio("\U0001F315 Theme", ["Light", "Dark"], key="theme")
-
-# -------------------------
-# Auth Functions
-# -------------------------
+# Auth functions
 def get_users():
-    data = sheet.get_all_records()
-    return {row['username']: row['password_hash'] for row in data}
+    try:
+        data = sheet.get_all_records()
+        return {row["username"]: row["password_hash"] for row in data}
+    except:
+        return {}
 
 def add_user(username, password):
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     sheet.append_row([username, hashed])
 
 def delete_user(username):
-    all_data = sheet.get_all_values()
-    for i, row in enumerate(all_data):
-        if row[0] == username:
-            sheet.delete_row(i + 1)
-            break
+    data = sheet.get_all_records()
+    sheet.clear()
+    sheet.append_row(["username", "password_hash"])
+    for row in data:
+        if row["username"] != username:
+            sheet.append_row([row["username"], row["password_hash"]])
 
 def reset_password(username, new_password):
-    all_data = sheet.get_all_values()
-    for i, row in enumerate(all_data):
-        if row[0] == username:
-            hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-            sheet.update_cell(i + 1, 2, hashed)
-            break
-
-def validate_login(username, password):
-    users = get_users()
-    if username in users:
-        return bcrypt.checkpw(password.encode(), users[username].encode())
-    return False
-
-# -------------------------
-# Login Form
-# -------------------------
-def login():
-    tab1, tab2 = st.tabs(["\U0001F512 Login", "\U0001F4BE Sign Up"])
-    with tab1:
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-        if st.button("Login"):
-            if validate_login(username, password):
-                st.session_state.logged_in = True
-                st.session_state.username = username
-                st.success(f"Welcome, {username}!")
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
-    with tab2:
-        new_username = st.text_input("New Username")
-        new_password = st.text_input("New Password", type="password")
-        if st.button("Sign Up"):
-            add_user(new_username, new_password)
-            st.success("User created. Please login.")
-
-# -------------------------
-# CSV Analyzer
-# -------------------------
-def csv_analyzer():
-    st.title("\U0001F4C8 Data Analyzer")
-
-    uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-
-        st.session_state.upload_history.append({
-            "filename": uploaded_file.name,
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "uploaded_by": st.session_state.username
-        })
-
-        st.subheader("CSV Data")
-        filter_text = st.text_input("Search in table")
-        if filter_text:
-            filtered_df = df[df.apply(lambda row: row.astype(str).str.contains(filter_text, case=False).any(), axis=1)]
+    data = sheet.get_all_records()
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    sheet.clear()
+    sheet.append_row(["username", "password_hash"])
+    for row in data:
+        if row["username"] == username:
+            sheet.append_row([username, hashed])
         else:
-            filtered_df = df
-        st.dataframe(filtered_df, use_container_width=True)
+            sheet.append_row([row["username"], row["password_hash"]])
 
-        st.subheader("Summary")
-        st.write(df.describe())
-
-        st.subheader("Plot Data")
-        columns = df.select_dtypes(include='number').columns.tolist()
-        if len(columns) >= 1:
-            chart_type = st.selectbox("Chart type", ["Histogram", "Line", "Scatter"])
-            x = st.selectbox("X-axis", columns)
-            y = st.selectbox("Y-axis", columns)
-
-            fig, ax = plt.subplots()
-            if chart_type == "Histogram":
-                sns.histplot(df[x], ax=ax)
-            elif chart_type == "Line":
-                sns.lineplot(x=df[x], y=df[y], ax=ax)
-            elif chart_type == "Scatter":
-                sns.scatterplot(x=df[x], y=df[y], ax=ax)
-
-            st.pyplot(fig)
-
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png")
-            st.download_button("Download Plot", buf.getvalue(), file_name="plot.png")
-
-    if st.session_state.upload_history:
-        st.sidebar.subheader("Upload History")
-        history_df = pd.DataFrame(st.session_state.upload_history)
-        st.sidebar.dataframe(history_df, height=200)
-
-# -------------------------
-# Admin Control Panel
-# -------------------------
 def admin_controls():
-    st.subheader("\U0001F4BB Admin Panel")
+    st.subheader("🖻 Admin Panel")
     users = get_users()
-    df_users = pd.DataFrame(users.items(), columns=["Username", "Hashed Password"])
-    st.dataframe(df_users)
+    st.dataframe(pd.DataFrame(users.items(), columns=["Username", "Hashed Password"]))
 
-    st.markdown("### Delete User")
-    user_to_delete = st.selectbox("Select user to delete", list(users.keys()))
+    st.markdown("### 🔐 Reset Password")
+    user_to_reset = st.selectbox("Reset user", list(users.keys()), key="reset_user")
+    new_pw = st.text_input("New password", type="password")
+    if st.button("Reset Password"):
+        reset_password(user_to_reset, new_pw)
+        st.success(f"Password for {user_to_reset} reset.")
+
+    st.markdown("### 🗑️ Delete User")
+    user_to_delete = st.selectbox("Delete user", [u for u in users.keys() if u != "admin"], key="delete_user")
     if st.button("Delete User"):
-        if user_to_delete != "admin":
-            delete_user(user_to_delete)
-            st.success(f"Deleted user: {user_to_delete}")
+        delete_user(user_to_delete)
+        st.success(f"User {user_to_delete} deleted.")
+
+    st.markdown("### 📋 Upload History by User")
+    if st.session_state.upload_history:
+        st.dataframe(pd.DataFrame(st.session_state.upload_history, columns=["Username", "Filename", "Timestamp"]))
+
+# Login & signup UI
+st.title("🔐 Secure Data Analyzer")
+tab_login, tab_signup = st.tabs(["Login", "Sign Up"])
+
+with tab_login:
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        users = get_users()
+        if username in users and bcrypt.checkpw(password.encode(), users[username].encode()):
+            st.session_state.logged_in = True
+            st.session_state.username = username
+            st.success(f"Welcome, {username}!")
             st.rerun()
         else:
-            st.warning("Cannot delete admin user")
+            st.error("Invalid username or password.")
 
-    st.markdown("### Reset User Password")
-    user_to_reset = st.selectbox("Select user to reset password", list(users.keys()), key="reset")
-    new_pass = st.text_input("Enter new password", key="new_pass")
-    if st.button("Reset Password"):
-        if user_to_reset:
-            reset_password(user_to_reset, new_pass)
-            st.success(f"Password reset for {user_to_reset}")
+with tab_signup:
+    new_user = st.text_input("New Username")
+    new_pass = st.text_input("New Password", type="password")
+    if st.button("Sign Up"):
+        users = get_users()
+        if new_user in users:
+            st.warning("Username already exists.")
+        elif not new_user.strip() or not new_pass.strip():
+            st.warning("Fields cannot be empty.")
+        else:
+            add_user(new_user, new_pass)
+            st.success("Account created. Please log in.")
+            st.rerun()
 
-    if st.session_state.upload_history:
-        st.markdown("### Uploads By User")
-        history_df = pd.DataFrame(st.session_state.upload_history)
-        st.dataframe(history_df)
+# Main app
+if st.session_state.logged_in:
+    st.sidebar.success(f"Logged in as {st.session_state.username}")
+    if st.sidebar.button("Logout"):
+        st.session_state.clear()
+        st.rerun()
 
-# -------------------------
-# App Entry Point
-# -------------------------
-if not st.session_state.logged_in:
-    login()
-else:
     if st.session_state.username == "admin":
         admin_controls()
-    csv_analyzer()
+
+    st.title("📊 Upload & Analyze CSV")
+    uploaded_file = st.file_uploader("Upload CSV File", type="csv")
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        st.session_state.uploaded_files.append((uploaded_file.name, df))
+        st.session_state.upload_history.append((st.session_state.username, uploaded_file.name, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        st.markdown(f"### Uploaded: `{uploaded_file.name}`")
+        st.dataframe(df)
+
+        st.subheader("🔎 Filter Data")
+        filter_col = st.selectbox("Column to filter", df.columns)
+        if df[filter_col].dtype == "object":
+            search_text = st.text_input("Contains text:")
+            if search_text:
+                df = df[df[filter_col].str.contains(search_text, case=False, na=False)]
+        else:
+            min_val = float(df[filter_col].min())
+            max_val = float(df[filter_col].max())
+            selected = st.slider("Select range", min_val, max_val, (min_val, max_val))
+            df = df[df[filter_col].between(*selected)]
+        st.dataframe(df)
+
+        st.subheader("📈 Visualization")
+        chart = st.selectbox("Choose chart type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
+        num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+        cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
+
+        fig, ax = plt.subplots()
+        if chart == "Scatter" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols)
+            y = st.selectbox("Y-axis", num_cols, index=1)
+            sns.scatterplot(data=df, x=x, y=y, ax=ax)
+        elif chart == "Line" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols)
+            y = st.selectbox("Y-axis", num_cols, index=1)
+            sns.lineplot(data=df, x=x, y=y, ax=ax)
+        elif chart == "Histogram" and num_cols:
+            col = st.selectbox("Column", num_cols)
+            sns.histplot(df[col], ax=ax)
+        elif chart == "Box" and num_cols:
+            col = st.selectbox("Column", num_cols)
+            sns.boxplot(y=df[col], ax=ax)
+        elif chart == "Heatmap" and len(num_cols) >= 2:
+            sns.heatmap(df[num_cols].corr(), annot=True, ax=ax, cmap="coolwarm")
+        elif chart == "Pie" and cat_cols:
+            col = st.selectbox("Column", cat_cols)
+            pie_data = df[col].value_counts()
+            plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%")
+            plt.axis("equal")
+
+        st.pyplot(fig)
+
+        def fig_to_png_bytes(fig):
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png")
+            buf.seek(0)
+            return buf
+
+        st.download_button("📥 Download Plot as PNG", data=fig_to_png_bytes(fig), file_name="plot.png", mime="image/png")
