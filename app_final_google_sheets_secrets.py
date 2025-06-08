@@ -14,7 +14,7 @@ SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = st.secrets["google_sheets"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1DFQst-DQMplGel6OxfpSM1K_48rDJpT48Y8Ur79d8g").sheet1
+sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1DFQst-DQMpIGel6OxfpSM1K_48rDJpT48Yv8Ur79dg/edit#gid=0").sheet1
 
 
 
