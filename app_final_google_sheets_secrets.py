@@ -1,189 +1,152 @@
 import streamlit as st
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import bcrypt
+import gspread
+import io
+from datetime import datetime
+from oauth2client.service_account import ServiceAccountCredentials
+from PIL import Image
 
-# -------------------------------
-# Theme Toggle (Dark/Light)
-# -------------------------------
-if "theme" not in st.session_state:
-    st.session_state.theme = "Light"
-theme = st.sidebar.radio("🌓 Theme", ["Light", "Dark"], index=0 if st.session_state.theme == "Light" else 1)
-st.session_state.theme = theme
-if theme == "Dark":
-    st.markdown("<style>body { background-color: #0e1117; color: white; }</style>", unsafe_allow_html=True)
-
-# -------------------------------
-# Google Sheets Auth
-# -------------------------------
+# -------------------------
+# Google Sheets Auth Setup
+# -------------------------
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = st.secrets["google_sheets"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
 sheet = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g").sheet1
 
-# -------------------------------
-# Session Initialization
-# -------------------------------
+# -------------------------
+# Session State Init
+# -------------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = ""
-if "uploaded_files" not in st.session_state:
-    st.session_state.uploaded_files = {}
+if "upload_history" not in st.session_state:
+    st.session_state.upload_history = []
+if "theme" not in st.session_state:
+    st.session_state.theme = "Dark"
 
-# -------------------------------
-# Auth Helpers
-# -------------------------------
+# -------------------------
+# Theme Toggle
+# -------------------------
+with st.sidebar:
+    st.radio("\U0001F315 Theme", ["Light", "Dark"], key="theme")
+
+# -------------------------
+# Auth Functions
+# -------------------------
 def get_users():
-    return {row['username']: row['password_hash'] for row in sheet.get_all_records()}
-
-def verify_user(username, password):
-    users = get_users()
-    if username in users:
-        return bcrypt.checkpw(password.encode(), users[username].encode())
-    return False
+    data = sheet.get_all_records()
+    return {row['username']: row['password_hash'] for row in data}
 
 def add_user(username, password):
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     sheet.append_row([username, hashed])
 
-# -------------------------------
-# Login / Signup
-# -------------------------------
-if not st.session_state.logged_in:
-    st.title("🔐 Login to Data Analyzer")
-    login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
+def validate_login(username, password):
+    users = get_users()
+    if username in users:
+        return bcrypt.checkpw(password.encode(), users[username].encode())
+    return False
 
-    with login_tab:
+# -------------------------
+# Login Form
+# -------------------------
+def login():
+    tab1, tab2 = st.tabs(["\U0001F512 Login", "\U0001F4BE Sign Up"])
+    with tab1:
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         if st.button("Login"):
-            if verify_user(username, password):
+            if validate_login(username, password):
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.success(f"Welcome, {username}!")
                 st.rerun()
-
             else:
-                st.error("Invalid credentials.")
-
-    with signup_tab:
-        new_user = st.text_input("New Username")
-        new_pass = st.text_input("New Password", type="password")
+                st.error("Invalid credentials")
+    with tab2:
+        new_username = st.text_input("New Username")
+        new_password = st.text_input("New Password", type="password")
         if st.button("Sign Up"):
-            users = get_users()
-            if new_user in users:
-                st.warning("Username already exists.")
-            elif new_user.strip() == "" or new_pass.strip() == "":
-                st.warning("Fields cannot be empty.")
-            else:
-                add_user(new_user, new_pass)
-                st.success("Account created. Please log in.")
+            add_user(new_username, new_password)
+            st.success("User created. Please login.")
 
-else:
-    st.sidebar.success(f"Logged in as {st.session_state.username}")
-    if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.rerun()
+# -------------------------
+# CSV Analyzer
+# -------------------------
+def csv_analyzer():
+    st.title("\U0001F4C8 Data Analyzer")
 
-
-    st.title("📊 Data Analyzer")
-
-    # -------------------------------
-    # CSV Upload
-    # -------------------------------
-    uploaded_file = st.file_uploader("Upload CSV File", type="csv")
+    uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        st.session_state.uploaded_files[uploaded_file.name] = df
 
-    if st.session_state.uploaded_files:
-        file_list = list(st.session_state.uploaded_files.keys())
-        selected_file = st.selectbox("Choose file to work with:", file_list)
-        df = st.session_state.uploaded_files[selected_file]
+        # Record history
+        st.session_state.upload_history.append({
+            "filename": uploaded_file.name,
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
 
-        # -------------------------------
-        # Filter Data
-        # -------------------------------
-        st.subheader("🔎 Search & Filter")
-        filter_column = st.selectbox("Select column to filter", df.columns)
-        if df[filter_column].dtype == "object":
-            search_text = st.text_input("Search for text:")
-            if search_text:
-                df = df[df[filter_column].str.contains(search_text, case=False, na=False)]
+        st.subheader("CSV Data")
+        filter_text = st.text_input("Search in table")
+        if filter_text:
+            filtered_df = df[df.apply(lambda row: row.astype(str).str.contains(filter_text, case=False).any(), axis=1)]
         else:
-            min_val = float(df[filter_column].min())
-            max_val = float(df[filter_column].max())
-            range_vals = st.slider("Select range", min_val, max_val, (min_val, max_val))
-            df = df[(df[filter_column] >= range_vals[0]) & (df[filter_column] <= range_vals[1])]
+            filtered_df = df
+        st.dataframe(filtered_df, use_container_width=True)
 
-        st.write("📋 Filtered Data:")
-        st.dataframe(df, use_container_width=True)
+        st.subheader("Summary")
+        st.write(df.describe())
 
-        # -------------------------------
-        # Summary
-        # -------------------------------
-        with st.expander("📈 Summary Statistics"):
-            st.write(df.describe())
-        with st.expander("📃 Column Info"):
-            st.write(df.dtypes)
+        # Plot options
+        st.subheader("Plot Data")
+        columns = df.select_dtypes(include='number').columns.tolist()
+        if len(columns) >= 1:
+            chart_type = st.selectbox("Chart type", ["Histogram", "Line", "Scatter"])
+            x = st.selectbox("X-axis", columns)
+            y = st.selectbox("Y-axis", columns)
 
-        # -------------------------------
-        # Download
-        # -------------------------------
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 Download Filtered CSV", csv, "filtered_data.csv", "text/csv")
+            fig, ax = plt.subplots()
+            if chart_type == "Histogram":
+                sns.histplot(df[x], ax=ax)
+            elif chart_type == "Line":
+                sns.lineplot(x=df[x], y=df[y], ax=ax)
+            elif chart_type == "Scatter":
+                sns.scatterplot(x=df[x], y=df[y], ax=ax)
 
-        # -------------------------------
-        # Upload History
-        # -------------------------------
-        st.subheader("📁 Uploaded Files")
-        for name in file_list:
-            with st.expander(f"{name}"):
-                st.write(st.session_state.uploaded_files[name])
-                st.download_button(
-                    label=f"Download {name}",
-                    data=st.session_state.uploaded_files[name].to_csv(index=False).encode("utf-8"),
-                    file_name=name,
-                    mime="text/csv",
-                    key=f"download_{name}"
-                )
+            st.pyplot(fig)
 
-        # -------------------------------
-        # Visualization
-        # -------------------------------
-        st.subheader("📊 Visualization")
-        plot_type = st.selectbox("Select plot type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie Chart"])
-        num_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-        cat_cols = df.select_dtypes(include=['object']).columns.tolist()
+            # Export Plot
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png")
+            st.download_button("Download Plot", buf.getvalue(), file_name="plot.png")
 
-        fig, ax = plt.subplots(figsize=(8, 5))
+    # Upload History
+    if st.session_state.upload_history:
+        st.sidebar.subheader("Upload History")
+        history_df = pd.DataFrame(st.session_state.upload_history)
+        st.sidebar.dataframe(history_df, height=200)
 
-        if plot_type == "Scatter" and len(num_cols) >= 2:
-            x = st.selectbox("X-axis", num_cols)
-            y = st.selectbox("Y-axis", num_cols, index=1 if len(num_cols) > 1 else 0)
-            sns.scatterplot(data=df, x=x, y=y, ax=ax)
-        elif plot_type == "Line" and len(num_cols) >= 2:
-            x = st.selectbox("X-axis", num_cols)
-            y = st.selectbox("Y-axis", num_cols, index=1 if len(num_cols) > 1 else 0)
-            sns.lineplot(data=df, x=x, y=y, ax=ax)
-        elif plot_type == "Histogram" and num_cols:
-            col = st.selectbox("Select numeric column", num_cols)
-            sns.histplot(df[col], bins=30, kde=True, ax=ax)
-        elif plot_type == "Box" and num_cols:
-            col = st.selectbox("Select numeric column", num_cols)
-            sns.boxplot(y=df[col], ax=ax)
-        elif plot_type == "Heatmap" and len(num_cols) >= 2:
-            sns.heatmap(df[num_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        elif plot_type == "Pie Chart" and cat_cols:
-            col = st.selectbox("Select categorical column", cat_cols)
-            pie_data = df[col].value_counts()
-            plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=140)
-            plt.axis("equal")
+# -------------------------
+# Admin Control Panel
+# -------------------------
+def admin_controls():
+    st.subheader("\U0001F4BB Admin Panel")
+    users = get_users()
+    st.write("**Registered Users**")
+    st.dataframe(pd.DataFrame(users.items(), columns=["Username", "Hashed Password"]))
 
-        st.pyplot(fig)
+# -------------------------
+# App Entry Point
+# -------------------------
+if not st.session_state.logged_in:
+    login()
+else:
+    if st.session_state.username == "admin":
+        admin_controls()
+    csv_analyzer()
