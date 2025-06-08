@@ -1,22 +1,20 @@
 import streamlit as st
+import toml
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import bcrypt
 import pandas as pd
-import json
 import seaborn as sns
 import matplotlib.pyplot as plt
 
 # -------------------------------
-# Google Sheets Setup via st.secrets
+# Google Sheets Setup via TOML file
 # -------------------------------
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_dict = st.secrets["google_sheets"]
+creds_dict = toml.load("gcp_service_account.toml")
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
-sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1DFQst-DQMpIGel6OxfpSM1K_48rDJpT48Yv8Ur79dg/edit#gid=0").sheet1
-
-
+sheet = client.open("Your Google Sheet Name").sheet1
 
 # -------------------------------
 # Helper Functions
@@ -149,7 +147,7 @@ else:
 
         # Download CSV
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Download CSV", csv, "analyzed_data.csv", "text/csv")
+        st.download_button("📅 Download CSV", csv, "analyzed_data.csv", "text/csv")
 
     # Admin-only features
     if st.session_state.username == "admin":
