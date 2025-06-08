@@ -124,14 +124,16 @@ else:
         st.dataframe(df, use_container_width=True)
 
         # -------------------------------
-        # Summary & Download
+        # Summary
         # -------------------------------
         with st.expander("📈 Summary Statistics"):
             st.write(df.describe())
-
         with st.expander("📃 Column Info"):
             st.write(df.dtypes)
 
+        # -------------------------------
+        # Download
+        # -------------------------------
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 Download Filtered CSV", csv, "filtered_data.csv", "text/csv")
 
@@ -149,3 +151,37 @@ else:
                     mime="text/csv",
                     key=f"download_{name}"
                 )
+
+        # -------------------------------
+        # Visualization
+        # -------------------------------
+        st.subheader("📊 Visualization")
+        plot_type = st.selectbox("Select plot type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie Chart"])
+        num_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
+        cat_cols = df.select_dtypes(include=['object']).columns.tolist()
+
+        fig, ax = plt.subplots(figsize=(8, 5))
+
+        if plot_type == "Scatter" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols)
+            y = st.selectbox("Y-axis", num_cols, index=1 if len(num_cols) > 1 else 0)
+            sns.scatterplot(data=df, x=x, y=y, ax=ax)
+        elif plot_type == "Line" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols)
+            y = st.selectbox("Y-axis", num_cols, index=1 if len(num_cols) > 1 else 0)
+            sns.lineplot(data=df, x=x, y=y, ax=ax)
+        elif plot_type == "Histogram" and num_cols:
+            col = st.selectbox("Select numeric column", num_cols)
+            sns.histplot(df[col], bins=30, kde=True, ax=ax)
+        elif plot_type == "Box" and num_cols:
+            col = st.selectbox("Select numeric column", num_cols)
+            sns.boxplot(y=df[col], ax=ax)
+        elif plot_type == "Heatmap" and len(num_cols) >= 2:
+            sns.heatmap(df[num_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        elif plot_type == "Pie Chart" and cat_cols:
+            col = st.selectbox("Select categorical column", cat_cols)
+            pie_data = df[col].value_counts()
+            plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=140)
+            plt.axis("equal")
+
+        st.pyplot(fig)
