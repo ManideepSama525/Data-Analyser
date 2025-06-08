@@ -14,7 +14,7 @@ SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds_dict = toml.load("gcp_service_account.toml")
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
-sheet = client.open("Your Google Sheet Name").sheet1
+sheet = client.open("user_database").sheet1
 
 # -------------------------------
 # Helper Functions
