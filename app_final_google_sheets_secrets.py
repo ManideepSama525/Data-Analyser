@@ -66,7 +66,8 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.success(f"Welcome, {username}!")
-                st.experimental_rerun()
+                st.rerun()
+
             else:
                 st.error("Invalid credentials.")
 
@@ -88,7 +89,8 @@ else:
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.session_state.username = ""
-        st.experimental_rerun()
+        st.rerun()
+
 
     st.title("📊 Data Analyzer")
 
