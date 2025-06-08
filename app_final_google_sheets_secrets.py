@@ -15,16 +15,13 @@ st.markdown("""
         background-color: #0e1117;
         color: #ffffff;
     }
-
     h1, h2, h3, h4 {
         color: #61dafb;
     }
-
     .stApp {
         font-family: 'Segoe UI', sans-serif;
         padding: 1rem;
     }
-
     .stButton>button {
         background-color: #00b4d8;
         color: white;
@@ -32,47 +29,38 @@ st.markdown("""
         height: 3em;
         font-weight: bold;
     }
-
     .stDownloadButton>button {
         background-color: #0077b6;
         color: white;
         border-radius: 8px;
         height: 3em;
     }
-
     .stSelectbox>div>div {
         background-color: #1a1a1a !important;
         color: white !important;
     }
-
     .css-1d391kg, .css-18ni7ap, .css-1v3fvcr {
         background-color: #1a1a1a;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Google Sheets auth
+# Google Sheets Auth
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = st.secrets["google_sheets"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
 sheet = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g").sheet1
 
-# Session state defaults
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "username" not in st.session_state:
-    st.session_state.username = ""
-if "uploaded_files" not in st.session_state:
-    st.session_state.uploaded_files = []
-if "upload_history" not in st.session_state:
-    st.session_state.upload_history = []
+# Session State Initialization
+for key in ["logged_in", "username", "uploaded_files", "upload_history"]:
+    if key not in st.session_state:
+        st.session_state[key] = [] if "files" in key or "history" in key else False if key == "logged_in" else ""
 
-# Auth functions
+# Auth Functions
 def get_users():
     try:
-        data = sheet.get_all_records()
-        return {row["username"]: row["password_hash"] for row in data}
+        return {row["username"]: row["password_hash"] for row in sheet.get_all_records()}
     except:
         return {}
 
@@ -94,12 +82,9 @@ def reset_password(username, new_password):
     sheet.clear()
     sheet.append_row(["username", "password_hash"])
     for row in data:
-        if row["username"] == username:
-            sheet.append_row([username, hashed])
-        else:
-            sheet.append_row([row["username"], row["password_hash"]])
+        sheet.append_row([username, hashed] if row["username"] == username else [row["username"], row["password_hash"]])
 
-# Sidebar (admin panel if admin)
+# Sidebar Admin Panel
 if st.session_state.logged_in:
     st.sidebar.success(f"Logged in as: {st.session_state.username}")
     if st.sidebar.button("Logout"):
@@ -109,30 +94,31 @@ if st.session_state.logged_in:
     if st.session_state.username == "admin":
         st.sidebar.title("⚙️ Admin Panel")
         users = get_users()
+
         st.sidebar.markdown("### 🔐 Reset Password")
         user_to_reset = st.sidebar.selectbox("Select user", list(users.keys()))
         new_pw = st.sidebar.text_input("New Password", type="password")
         if st.sidebar.button("Reset"):
             reset_password(user_to_reset, new_pw)
-            st.sidebar.success(f"{user_to_reset}'s password reset")
+            st.sidebar.success(f"{user_to_reset}'s password reset.")
 
         st.sidebar.markdown("### 🗑️ Delete User")
         user_to_delete = st.sidebar.selectbox("Delete user", [u for u in users if u != "admin"])
         if st.sidebar.button("Delete"):
             delete_user(user_to_delete)
-            st.sidebar.success(f"{user_to_delete} deleted")
+            st.sidebar.success(f"{user_to_delete} deleted.")
 
         st.sidebar.markdown("### 📋 Upload History")
         if st.session_state.upload_history:
-            st.sidebar.dataframe(pd.DataFrame(st.session_state.upload_history,
-                                              columns=["Username", "File", "Time"]))
+            history_df = pd.DataFrame(st.session_state.upload_history, columns=["Username", "File", "Time"])
+            st.sidebar.dataframe(history_df)
 
-# Main Login Interface
+# Login/Signup
 if not st.session_state.logged_in:
     st.title("🔐 Secure Data Analyzer")
-    tab1, tab2 = st.tabs(["Login", "Sign Up"])
+    login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
 
-    with tab1:
+    with login_tab:
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         if st.button("Login"):
@@ -144,7 +130,7 @@ if not st.session_state.logged_in:
             else:
                 st.error("Invalid credentials.")
 
-    with tab2:
+    with signup_tab:
         new_user = st.text_input("New Username")
         new_pass = st.text_input("New Password", type="password")
         if st.button("Register"):
@@ -155,17 +141,17 @@ if not st.session_state.logged_in:
                 st.warning("Please fill both fields.")
             else:
                 add_user(new_user, new_pass)
-                st.success("Account created. You can now log in.")
+                st.success("Account created. Please log in.")
                 st.rerun()
 
-# Main App after login
+# Main CSV App
 if st.session_state.logged_in:
     st.title("📊 Upload & Analyze CSV")
     uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        st.session_state.uploaded_files.append((uploaded_file.name, df))
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        st.session_state.uploaded_files.append((uploaded_file.name, df))
         st.session_state.upload_history.append((st.session_state.username, uploaded_file.name, timestamp))
 
         st.markdown(f"### Preview of `{uploaded_file.name}`")
@@ -215,7 +201,6 @@ if st.session_state.logged_in:
 
         st.pyplot(fig)
 
-        # Download plot as PNG
         def fig_to_png(fig):
             buf = io.BytesIO()
             fig.savefig(buf, format="png")
