@@ -3,6 +3,7 @@ gspread
 oauth2client
 bcrypt
 pandas
-seaborn
 matplotlib
+seaborn
+python-pptx
 toml
