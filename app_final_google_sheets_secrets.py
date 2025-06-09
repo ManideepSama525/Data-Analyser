@@ -43,6 +43,8 @@ if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = ""
+if "upload_content" not in st.session_state:
+    st.session_state.upload_content = []
 
 # ---------------------- Auth Utilities ----------------------
 def get_users():
@@ -88,18 +90,15 @@ def fig_to_png(fig):
 def generate_ppt_from_df(df, chart_dict):
     prs = Presentation()
 
-    # Title
     slide = prs.slides.add_slide(prs.slide_layouts[0])
     slide.shapes.title.text = "CSV Data Report"
     slide.placeholders[1].text = "Generated via Streamlit"
 
-    # Summary
     slide = prs.slides.add_slide(prs.slide_layouts[1])
     slide.shapes.title.text = "Summary Statistics"
     textbox = slide.placeholders[1]
     textbox.text = df.describe(include='all').round(2).to_string()
 
-    # Sample data
     slide = prs.slides.add_slide(prs.slide_layouts[5])
     slide.shapes.title.text = "Data Sample (first 10 rows)"
     table = slide.shapes.add_table(min(10, len(df)) + 1, len(df.columns), Inches(0.5), Inches(1.5), Inches(9), Inches(4)).table
@@ -109,7 +108,6 @@ def generate_ppt_from_df(df, chart_dict):
         for c in range(len(df.columns)):
             table.cell(r + 1, c).text = str(df.iloc[r, c])
 
-    # Charts
     for title, fig in chart_dict.items():
         slide = prs.slides.add_slide(prs.slide_layouts[5])
         slide.shapes.title.text = title
@@ -180,6 +178,15 @@ if st.session_state.logged_in:
         history_df = fetch_upload_history()
         st.sidebar.dataframe(history_df)
 
+        st.sidebar.markdown("### 🗂️ Download Uploaded CSVs")
+        for username, filename, csv_bytes in st.session_state.upload_content:
+            st.sidebar.download_button(
+                label=f"⬇ {filename} ({username})",
+                data=csv_bytes,
+                file_name=f"{username}_{filename}",
+                mime="text/csv"
+            )
+
 # ---------------------- Main App ----------------------
 if st.session_state.logged_in:
     st.title("📊 Upload & Analyze CSV")
@@ -187,6 +194,8 @@ if st.session_state.logged_in:
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
         log_upload(st.session_state.username, uploaded_file.name)
+        csv_bytes = uploaded_file.getvalue()
+        st.session_state.upload_content.append((st.session_state.username, uploaded_file.name, csv_bytes))
 
         st.subheader(f"📄 Preview: `{uploaded_file.name}`")
         st.dataframe(df)
@@ -205,7 +214,6 @@ if st.session_state.logged_in:
 
         st.dataframe(df)
 
-        # ---------------------- Visualization & Export ----------------------
         st.subheader("📈 Visualizations")
         num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
         cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
