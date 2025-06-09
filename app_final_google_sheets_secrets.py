@@ -10,9 +10,7 @@ from pptx.util import Inches
 import io
 import datetime
 
-# -----------------------------------
-# 🎨 Custom Theme
-# -----------------------------------
+# ---------------------- Custom Theme ----------------------
 st.markdown("""
 <style>
     body { background-color: #0e1117; color: #ffffff; }
@@ -27,9 +25,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------------
-# 🔐 Google Sheets Auth
-# -----------------------------------
+# ---------------------- Google Sheets Auth ----------------------
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = st.secrets["google_sheets"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
@@ -42,17 +38,13 @@ except:
     upload_sheet = workbook.add_worksheet(title="upload_history", rows="1000", cols="3")
     upload_sheet.append_row(["username", "filename", "timestamp"])
 
-# -----------------------------------
-# Session State Initialization
-# -----------------------------------
+# ---------------------- Session State ----------------------
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
 if "username" not in st.session_state:
     st.session_state.username = ""
 
-# -----------------------------------
-# 🔧 Auth & Utility Functions
-# -----------------------------------
+# ---------------------- Auth Functions ----------------------
 def get_users():
     return {row["username"]: row["password_hash"] for row in sheet.get_all_records()}
 
@@ -61,72 +53,73 @@ def add_user(username, password):
     sheet.append_row([username, hashed])
 
 def delete_user(username):
-    data = sheet.get_all_records()
+    users = sheet.get_all_records()
     sheet.clear()
     sheet.append_row(["username", "password_hash"])
-    for row in data:
-        if row["username"] != username:
-            sheet.append_row([row["username"], row["password_hash"]])
+    for u in users:
+        if u["username"] != username:
+            sheet.append_row([u["username"], u["password_hash"]])
 
-def reset_password(username, new_password):
-    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-    data = sheet.get_all_records()
+def reset_password(username, new_pw):
+    users = sheet.get_all_records()
+    hashed = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
     sheet.clear()
     sheet.append_row(["username", "password_hash"])
-    for row in data:
-        if row["username"] == username:
+    for u in users:
+        if u["username"] == username:
             sheet.append_row([username, hashed])
         else:
-            sheet.append_row([row["username"], row["password_hash"]])
+            sheet.append_row([u["username"], u["password_hash"]])
 
 def log_upload(username, filename):
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    upload_sheet.append_row([username, filename, timestamp])
+    upload_sheet.append_row([username, filename, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
 
 def fetch_upload_history():
     return pd.DataFrame(upload_sheet.get_all_records())
 
+# ---------------------- Utility ----------------------
 def fig_to_png(fig):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
     return buf
 
-def generate_ppt_from_df(df, chart_bytes=None, filename="report.pptx"):
+def generate_ppt_from_df(df, charts):
     prs = Presentation()
 
+    # Title slide
     slide = prs.slides.add_slide(prs.slide_layouts[0])
     slide.shapes.title.text = "CSV Data Report"
-    slide.placeholders[1].text = f"Auto-generated from CSV"
+    slide.placeholders[1].text = "Auto-generated Report"
 
+    # Summary statistics
     slide = prs.slides.add_slide(prs.slide_layouts[1])
     slide.shapes.title.text = "Summary Statistics"
-    textbox = slide.placeholders[1]
-    textbox.text = df.describe(include='all').round(2).to_string()
+    slide.placeholders[1].text = df.describe(include='all').round(2).to_string()
 
+    # Data sample
     slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "Data Sample"
-    rows, cols = min(10, len(df)) + 1, len(df.columns)
-    table = slide.shapes.add_table(rows, cols, Inches(0.5), Inches(1.5), Inches(9), Inches(4)).table
+    slide.shapes.title.text = "Sample Data (First 10 Rows)"
+    table = slide.shapes.add_table(min(10, len(df)) + 1, len(df.columns), Inches(0.5), Inches(1.5), Inches(9), Inches(4)).table
     for i, col in enumerate(df.columns):
         table.cell(0, i).text = str(col)
     for r in range(min(10, len(df))):
-        for c in range(cols):
+        for c in range(len(df.columns)):
             table.cell(r + 1, c).text = str(df.iloc[r, c])
 
-    if chart_bytes:
+    # Add charts
+    for title, fig in charts.items():
         slide = prs.slides.add_slide(prs.slide_layouts[5])
-        slide.shapes.title.text = "Visualization"
-        pic = slide.shapes.add_picture(chart_bytes, Inches(1), Inches(1.5), Inches(6), Inches(4))
+        slide.shapes.title.text = title
+        img_buf = fig_to_png(fig)
+        slide.shapes.add_picture(img_buf, Inches(1), Inches(1.5), Inches(6), Inches(4.5))
 
-    ppt_io = io.BytesIO()
-    prs.save(ppt_io)
-    ppt_io.seek(0)
-    return ppt_io
+    out = io.BytesIO()
+    prs.save(out)
+    out.seek(0)
+    return out
 
-# -----------------------------------
-# 👤 Login / Sign-up UI
-# -----------------------------------
+# ---------------------- Login / Signup ----------------------
 if not st.session_state.logged_in:
     st.title("🔐 Secure Data Analyzer")
     login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
@@ -151,15 +144,13 @@ if not st.session_state.logged_in:
             if new_user in users:
                 st.warning("Username exists.")
             elif not new_user or not new_pass:
-                st.warning("Please fill all fields.")
+                st.warning("Please fill both fields.")
             else:
                 add_user(new_user, new_pass)
                 st.success("Account created. Please log in.")
                 st.rerun()
 
-# -----------------------------------
-# 👑 Admin Sidebar Controls
-# -----------------------------------
+# ---------------------- Admin Sidebar ----------------------
 if st.session_state.logged_in:
     st.sidebar.success(f"Logged in as: {st.session_state.username}")
     if st.sidebar.button("Logout"):
@@ -171,40 +162,35 @@ if st.session_state.logged_in:
         users = get_users()
 
         st.sidebar.markdown("### 🔐 Reset Password")
-        user_to_reset = st.sidebar.selectbox("Reset user", list(users.keys()))
-        new_pw = st.sidebar.text_input("New Password", type="password")
+        user_to_reset = st.sidebar.selectbox("User", list(users.keys()))
+        new_pw = st.sidebar.text_input("New password", type="password")
         if st.sidebar.button("Reset Password"):
             reset_password(user_to_reset, new_pw)
-            st.sidebar.success(f"Password for {user_to_reset} reset.")
+            st.sidebar.success("Password reset")
 
         st.sidebar.markdown("### 🗑️ Delete User")
-        user_to_delete = st.sidebar.selectbox("Delete user", [u for u in users if u != "admin"])
+        user_to_delete = st.sidebar.selectbox("Delete", [u for u in users if u != "admin"])
         if st.sidebar.button("Delete User"):
             delete_user(user_to_delete)
-            st.sidebar.success(f"User {user_to_delete} deleted.")
+            st.sidebar.success("User deleted")
 
         st.sidebar.markdown("### 📋 Upload History")
-        try:
-            history_df = fetch_upload_history()
-            st.sidebar.dataframe(history_df)
-        except:
-            st.sidebar.warning("No upload history yet.")
+        hist_df = fetch_upload_history()
+        st.sidebar.dataframe(hist_df)
 
-# -----------------------------------
-# 📊 Main CSV Analyzer
-# -----------------------------------
+# ---------------------- Main Analyzer ----------------------
 if st.session_state.logged_in:
     st.title("📊 Upload & Analyze CSV")
-    uploaded_file = st.file_uploader("Upload your CSV", type="csv")
+    uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
         log_upload(st.session_state.username, uploaded_file.name)
 
-        st.subheader(f"📄 Preview: `{uploaded_file.name}`")
+        st.subheader(f"📄 Preview: {uploaded_file.name}")
         st.dataframe(df)
 
-        st.subheader("🔎 Filter Data")
-        filter_col = st.selectbox("Column to filter", df.columns)
+        st.subheader("🔍 Filter Data")
+        filter_col = st.selectbox("Filter column", df.columns)
         if df[filter_col].dtype == "object":
             keyword = st.text_input("Search keyword")
             if keyword:
@@ -212,43 +198,49 @@ if st.session_state.logged_in:
         else:
             min_val = float(df[filter_col].min())
             max_val = float(df[filter_col].max())
-            selected = st.slider("Select range", min_val, max_val, (min_val, max_val))
-            df = df[df[filter_col].between(*selected)]
+            val_range = st.slider("Range", min_val, max_val, (min_val, max_val))
+            df = df[df[filter_col].between(*val_range)]
 
         st.dataframe(df)
 
         st.subheader("📈 Visualization")
-        chart = st.selectbox("Chart type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
+        chart_type = st.selectbox("Chart Type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
         num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
         cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
+        chart_dict = {}
         fig, ax = plt.subplots()
 
-        if chart == "Scatter" and len(num_cols) >= 2:
+        if chart_type == "Scatter" and len(num_cols) >= 2:
             x = st.selectbox("X-axis", num_cols)
             y = st.selectbox("Y-axis", num_cols, index=1)
             sns.scatterplot(data=df, x=x, y=y, ax=ax)
-        elif chart == "Line" and len(num_cols) >= 2:
+            chart_dict["Scatter Plot"] = fig
+        elif chart_type == "Line" and len(num_cols) >= 2:
             x = st.selectbox("X-axis", num_cols)
             y = st.selectbox("Y-axis", num_cols, index=1)
             sns.lineplot(data=df, x=x, y=y, ax=ax)
-        elif chart == "Histogram" and num_cols:
+            chart_dict["Line Chart"] = fig
+        elif chart_type == "Histogram" and num_cols:
             col = st.selectbox("Column", num_cols)
             sns.histplot(df[col], kde=True, ax=ax)
-        elif chart == "Box" and num_cols:
+            chart_dict[f"Histogram - {col}"] = fig
+        elif chart_type == "Box" and num_cols:
             col = st.selectbox("Column", num_cols)
             sns.boxplot(y=df[col], ax=ax)
-        elif chart == "Heatmap" and len(num_cols) >= 2:
+            chart_dict[f"Box Plot - {col}"] = fig
+        elif chart_type == "Heatmap" and len(num_cols) >= 2:
             sns.heatmap(df[num_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        elif chart == "Pie" and cat_cols:
-            col = st.selectbox("Category column", cat_cols)
+            chart_dict["Heatmap"] = fig
+        elif chart_type == "Pie" and cat_cols:
+            col = st.selectbox("Category", cat_cols)
             pie_data = df[col].value_counts()
             plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%")
             plt.axis("equal")
+            chart_dict[f"Pie Chart - {col}"] = fig
 
         st.pyplot(fig)
+        st.download_button("📥 Download Chart PNG", data=fig_to_png(fig), file_name="chart.png", mime="image/png")
 
-        png_buf = fig_to_png(fig)
-        st.download_button("📥 Download Plot as PNG", data=png_buf, file_name="plot.png", mime="image/png")
-
-        ppt_buf = generate_ppt_from_df(df, chart_bytes=png_buf)
-        st.download_button("📥 Download as PowerPoint", data=ppt_buf, file_name="report.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        pptx_buf = generate_ppt_from_df(df, chart_dict)
+        st.download_button("📥 Download PowerPoint", data=pptx_buf,
+                           file_name="report.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
