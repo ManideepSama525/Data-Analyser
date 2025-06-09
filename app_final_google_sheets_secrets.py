@@ -5,64 +5,56 @@ import bcrypt
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-import datetime
+from pptx import Presentation
+from pptx.util import Inches
 import io
+import datetime
 
-# Apply visual theme
+# -----------------------------------
+# 🎨 Custom Theme
+# -----------------------------------
 st.markdown("""
 <style>
-    body {
-        background-color: #0e1117;
-        color: #ffffff;
+    body { background-color: #0e1117; color: #ffffff; }
+    h1, h2, h3, h4 { color: #61dafb; }
+    .stApp { font-family: 'Segoe UI', sans-serif; padding: 1rem; }
+    .stButton>button, .stDownloadButton>button {
+        background-color: #00b4d8; color: white; border-radius: 8px;
+        height: 3em; font-weight: bold;
     }
-    h1, h2, h3, h4 {
-        color: #61dafb;
-    }
-    .stApp {
-        font-family: 'Segoe UI', sans-serif;
-        padding: 1rem;
-    }
-    .stButton>button {
-        background-color: #00b4d8;
-        color: white;
-        border-radius: 10px;
-        height: 3em;
-        font-weight: bold;
-    }
-    .stDownloadButton>button {
-        background-color: #0077b6;
-        color: white;
-        border-radius: 8px;
-        height: 3em;
-    }
-    .stSelectbox>div>div {
-        background-color: #1a1a1a !important;
-        color: white !important;
-    }
-    .css-1d391kg, .css-18ni7ap, .css-1v3fvcr {
-        background-color: #1a1a1a;
-    }
+    .stSelectbox>div>div { background-color: #1a1a1a !important; color: white !important; }
+    .css-1d391kg, .css-18ni7ap, .css-1v3fvcr { background-color: #1a1a1a; }
 </style>
 """, unsafe_allow_html=True)
 
-# Google Sheets Auth
+# -----------------------------------
+# 🔐 Google Sheets Auth
+# -----------------------------------
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = st.secrets["google_sheets"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
 client = gspread.authorize(creds)
-sheet = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g").sheet1
+workbook = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g")
+sheet = workbook.sheet1
+try:
+    upload_sheet = workbook.worksheet("upload_history")
+except:
+    upload_sheet = workbook.add_worksheet(title="upload_history", rows="1000", cols="3")
+    upload_sheet.append_row(["username", "filename", "timestamp"])
 
+# -----------------------------------
 # Session State Initialization
-for key in ["logged_in", "username", "uploaded_files", "upload_history"]:
-    if key not in st.session_state:
-        st.session_state[key] = [] if "files" in key or "history" in key else False if key == "logged_in" else ""
+# -----------------------------------
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
-# Auth Functions
+# -----------------------------------
+# 🔧 Auth & Utility Functions
+# -----------------------------------
 def get_users():
-    try:
-        return {row["username"]: row["password_hash"] for row in sheet.get_all_records()}
-    except:
-        return {}
+    return {row["username"]: row["password_hash"] for row in sheet.get_all_records()}
 
 def add_user(username, password):
     hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -77,43 +69,64 @@ def delete_user(username):
             sheet.append_row([row["username"], row["password_hash"]])
 
 def reset_password(username, new_password):
-    data = sheet.get_all_records()
     hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    data = sheet.get_all_records()
     sheet.clear()
     sheet.append_row(["username", "password_hash"])
     for row in data:
-        sheet.append_row([username, hashed] if row["username"] == username else [row["username"], row["password_hash"]])
+        if row["username"] == username:
+            sheet.append_row([username, hashed])
+        else:
+            sheet.append_row([row["username"], row["password_hash"]])
 
-# Sidebar Admin Panel
-if st.session_state.logged_in:
-    st.sidebar.success(f"Logged in as: {st.session_state.username}")
-    if st.sidebar.button("Logout"):
-        st.session_state.clear()
-        st.rerun()
+def log_upload(username, filename):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    upload_sheet.append_row([username, filename, timestamp])
 
-    if st.session_state.username == "admin":
-        st.sidebar.title("⚙️ Admin Panel")
-        users = get_users()
+def fetch_upload_history():
+    return pd.DataFrame(upload_sheet.get_all_records())
 
-        st.sidebar.markdown("### 🔐 Reset Password")
-        user_to_reset = st.sidebar.selectbox("Select user", list(users.keys()))
-        new_pw = st.sidebar.text_input("New Password", type="password")
-        if st.sidebar.button("Reset"):
-            reset_password(user_to_reset, new_pw)
-            st.sidebar.success(f"{user_to_reset}'s password reset.")
+def fig_to_png(fig):
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    return buf
 
-        st.sidebar.markdown("### 🗑️ Delete User")
-        user_to_delete = st.sidebar.selectbox("Delete user", [u for u in users if u != "admin"])
-        if st.sidebar.button("Delete"):
-            delete_user(user_to_delete)
-            st.sidebar.success(f"{user_to_delete} deleted.")
+def generate_ppt_from_df(df, chart_bytes=None, filename="report.pptx"):
+    prs = Presentation()
 
-        st.sidebar.markdown("### 📋 Upload History")
-        if st.session_state.upload_history:
-            history_df = pd.DataFrame(st.session_state.upload_history, columns=["Username", "File", "Time"])
-            st.sidebar.dataframe(history_df)
+    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    slide.shapes.title.text = "CSV Data Report"
+    slide.placeholders[1].text = f"Auto-generated from CSV"
 
-# Login/Signup
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Summary Statistics"
+    textbox = slide.placeholders[1]
+    textbox.text = df.describe(include='all').round(2).to_string()
+
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "Data Sample"
+    rows, cols = min(10, len(df)) + 1, len(df.columns)
+    table = slide.shapes.add_table(rows, cols, Inches(0.5), Inches(1.5), Inches(9), Inches(4)).table
+    for i, col in enumerate(df.columns):
+        table.cell(0, i).text = str(col)
+    for r in range(min(10, len(df))):
+        for c in range(cols):
+            table.cell(r + 1, c).text = str(df.iloc[r, c])
+
+    if chart_bytes:
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        slide.shapes.title.text = "Visualization"
+        pic = slide.shapes.add_picture(chart_bytes, Inches(1), Inches(1.5), Inches(6), Inches(4))
+
+    ppt_io = io.BytesIO()
+    prs.save(ppt_io)
+    ppt_io.seek(0)
+    return ppt_io
+
+# -----------------------------------
+# 👤 Login / Sign-up UI
+# -----------------------------------
 if not st.session_state.logged_in:
     st.title("🔐 Secure Data Analyzer")
     login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
@@ -138,26 +151,59 @@ if not st.session_state.logged_in:
             if new_user in users:
                 st.warning("Username exists.")
             elif not new_user or not new_pass:
-                st.warning("Please fill both fields.")
+                st.warning("Please fill all fields.")
             else:
                 add_user(new_user, new_pass)
                 st.success("Account created. Please log in.")
                 st.rerun()
 
-# Main CSV App
+# -----------------------------------
+# 👑 Admin Sidebar Controls
+# -----------------------------------
+if st.session_state.logged_in:
+    st.sidebar.success(f"Logged in as: {st.session_state.username}")
+    if st.sidebar.button("Logout"):
+        st.session_state.clear()
+        st.rerun()
+
+    if st.session_state.username == "admin":
+        st.sidebar.title("⚙️ Admin Panel")
+        users = get_users()
+
+        st.sidebar.markdown("### 🔐 Reset Password")
+        user_to_reset = st.sidebar.selectbox("Reset user", list(users.keys()))
+        new_pw = st.sidebar.text_input("New Password", type="password")
+        if st.sidebar.button("Reset Password"):
+            reset_password(user_to_reset, new_pw)
+            st.sidebar.success(f"Password for {user_to_reset} reset.")
+
+        st.sidebar.markdown("### 🗑️ Delete User")
+        user_to_delete = st.sidebar.selectbox("Delete user", [u for u in users if u != "admin"])
+        if st.sidebar.button("Delete User"):
+            delete_user(user_to_delete)
+            st.sidebar.success(f"User {user_to_delete} deleted.")
+
+        st.sidebar.markdown("### 📋 Upload History")
+        try:
+            history_df = fetch_upload_history()
+            st.sidebar.dataframe(history_df)
+        except:
+            st.sidebar.warning("No upload history yet.")
+
+# -----------------------------------
+# 📊 Main CSV Analyzer
+# -----------------------------------
 if st.session_state.logged_in:
     st.title("📊 Upload & Analyze CSV")
-    uploaded_file = st.file_uploader("Upload your CSV file", type="csv")
+    uploaded_file = st.file_uploader("Upload your CSV", type="csv")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        st.session_state.uploaded_files.append((uploaded_file.name, df))
-        st.session_state.upload_history.append((st.session_state.username, uploaded_file.name, timestamp))
+        log_upload(st.session_state.username, uploaded_file.name)
 
-        st.markdown(f"### Preview of `{uploaded_file.name}`")
+        st.subheader(f"📄 Preview: `{uploaded_file.name}`")
         st.dataframe(df)
 
-        st.subheader("🔍 Filter / Search Table")
+        st.subheader("🔎 Filter Data")
         filter_col = st.selectbox("Column to filter", df.columns)
         if df[filter_col].dtype == "object":
             keyword = st.text_input("Search keyword")
@@ -166,34 +212,34 @@ if st.session_state.logged_in:
         else:
             min_val = float(df[filter_col].min())
             max_val = float(df[filter_col].max())
-            range_val = st.slider("Select range", min_val, max_val, (min_val, max_val))
-            df = df[df[filter_col].between(*range_val)]
+            selected = st.slider("Select range", min_val, max_val, (min_val, max_val))
+            df = df[df[filter_col].between(*selected)]
 
         st.dataframe(df)
 
-        st.subheader("📈 Create a Chart")
-        chart_type = st.selectbox("Choose chart", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
+        st.subheader("📈 Visualization")
+        chart = st.selectbox("Chart type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
         num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
         cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
         fig, ax = plt.subplots()
 
-        if chart_type == "Scatter" and len(num_cols) >= 2:
+        if chart == "Scatter" and len(num_cols) >= 2:
             x = st.selectbox("X-axis", num_cols)
             y = st.selectbox("Y-axis", num_cols, index=1)
             sns.scatterplot(data=df, x=x, y=y, ax=ax)
-        elif chart_type == "Line" and len(num_cols) >= 2:
+        elif chart == "Line" and len(num_cols) >= 2:
             x = st.selectbox("X-axis", num_cols)
             y = st.selectbox("Y-axis", num_cols, index=1)
             sns.lineplot(data=df, x=x, y=y, ax=ax)
-        elif chart_type == "Histogram" and num_cols:
+        elif chart == "Histogram" and num_cols:
             col = st.selectbox("Column", num_cols)
             sns.histplot(df[col], kde=True, ax=ax)
-        elif chart_type == "Box" and num_cols:
+        elif chart == "Box" and num_cols:
             col = st.selectbox("Column", num_cols)
             sns.boxplot(y=df[col], ax=ax)
-        elif chart_type == "Heatmap" and len(num_cols) >= 2:
+        elif chart == "Heatmap" and len(num_cols) >= 2:
             sns.heatmap(df[num_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        elif chart_type == "Pie" and cat_cols:
+        elif chart == "Pie" and cat_cols:
             col = st.selectbox("Category column", cat_cols)
             pie_data = df[col].value_counts()
             plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%")
@@ -201,11 +247,8 @@ if st.session_state.logged_in:
 
         st.pyplot(fig)
 
-        def fig_to_png(fig):
-            buf = io.BytesIO()
-            fig.savefig(buf, format="png")
-            buf.seek(0)
-            return buf
+        png_buf = fig_to_png(fig)
+        st.download_button("📥 Download Plot as PNG", data=png_buf, file_name="plot.png", mime="image/png")
 
-        st.download_button("📥 Download Plot as PNG", data=fig_to_png(fig),
-                           file_name="plot.png", mime="image/png")
+        ppt_buf = generate_ppt_from_df(df, chart_bytes=png_buf)
+        st.download_button("📥 Download as PowerPoint", data=ppt_buf, file_name="report.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
