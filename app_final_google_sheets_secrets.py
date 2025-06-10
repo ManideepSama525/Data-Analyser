@@ -1,123 +1,175 @@
 import streamlit as st
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import bcrypt
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
+import seaborn as sns
+from pptx import Presentation
+from pptx.util import Inches
+import io
 import datetime
 import requests
 import tempfile
 import os
-from pptx import Presentation
-from pptx.util import Inches
-from io import BytesIO
 
-st.title("📊 Data Analyzer App")
+# ===== PAGE CONFIG =====
+st.set_page_config(page_title="Data Analyzer", layout="wide")
+st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Upload your CSV or Excel file", type=["csv", "xlsx"])
+# ===== GOOGLE SHEETS AUTH =====
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds_dict = st.secrets["google_sheets"]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+client = gspread.authorize(creds)
 
-if uploaded_file is not None:
-    # Load data
-    if uploaded_file.name.endswith(".csv"):
-        df = pd.read_csv(uploaded_file)
-    else:
-        df = pd.read_excel(uploaded_file)
+auth_sheet = client.open("streamlit_user_auth").worksheet("users")
+history_sheet = client.open("streamlit_user_auth").worksheet("upload_history")
+ADMIN_USERNAME = "manideep"
 
-    # Detect column types
-    numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-    cat_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
+# ===== AUTH FUNCTIONS =====
+def get_users():
+    return auth_sheet.get_all_records()
 
-    # --- UI & Visualization ---
-    st.subheader("📈 Select Graphs to Display")
-    available_charts = []
-    if len(numeric_cols) >= 2:
-        available_charts += ["Scatter Plot", "Line Plot"]
-    if len(numeric_cols) >= 1:
-        available_charts += ["Histogram", "Box Plot", "Heatmap"]
-    if len(cat_cols) >= 1:
-        available_charts += ["Pie Chart"]
+def find_user(username):
+    return next((u for u in get_users() if u['username'] == username), None)
 
-    selected_charts = st.multiselect("Select the charts you want to view on screen", available_charts, default=available_charts[:2])
+def authenticate(username, password):
+    user = find_user(username)
+    return user and bcrypt.checkpw(password.encode(), user['password'].encode())
 
-    # Axis selectors
-    if len(numeric_cols) >= 2:
-        x_axis = st.selectbox("Select X-axis", numeric_cols, key=f"x_{uploaded_file.name}")
-        y_axis = st.selectbox("Select Y-axis", numeric_cols, key=f"y_{uploaded_file.name}")
+def save_upload_history(username, filename):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    history_sheet.append_row([username, filename, timestamp])
 
-    st.subheader("📊 Selected Charts")
-    fig_list = []
+def get_upload_history():
+    return history_sheet.get_all_records()
 
-    if "Scatter Plot" in selected_charts:
-        fig1, ax1 = plt.subplots()
-        sns.scatterplot(data=df, x=x_axis, y=y_axis, ax=ax1)
-        ax1.set_title("Scatter Plot")
-        st.pyplot(fig1)
-        fig_list.append(("Scatter Plot", fig1))
-
-    if "Line Plot" in selected_charts:
-        fig2, ax2 = plt.subplots()
-        df[[x_axis, y_axis]].plot(ax=ax2)
-        ax2.set_title("Line Plot")
-        st.pyplot(fig2)
-        fig_list.append(("Line Plot", fig2))
-
-    if "Histogram" in selected_charts:
-        fig3, ax3 = plt.subplots()
-        df[numeric_cols].hist(ax=ax3)
-        st.pyplot(fig3)
-        fig_list.append(("Histogram", fig3))
-
-    if "Box Plot" in selected_charts:
-        fig4, ax4 = plt.subplots()
-        sns.boxplot(data=df[numeric_cols], ax=ax4)
-        ax4.set_title("Box Plot")
-        st.pyplot(fig4)
-        fig_list.append(("Box Plot", fig4))
-
-    if "Heatmap" in selected_charts:
-        fig5, ax5 = plt.subplots()
-        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax5)
-        ax5.set_title("Correlation Heatmap")
-        st.pyplot(fig5)
-        fig_list.append(("Heatmap", fig5))
-
-    if "Pie Chart" in selected_charts and len(cat_cols) > 0:
-        pie_data = df[cat_cols[0]].value_counts()
-        fig6, ax6 = plt.subplots()
-        ax6.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-        ax6.set_title(f"Pie Chart of {cat_cols[0]}")
-        ax6.axis('equal')
-        st.pyplot(fig6)
-        fig_list.append(("Pie Chart", fig6))
-
-    # --- AI Summary ---
-    st.subheader("📄 AI Text Summary")
+# ===== SUMMARIZATION =====
+def summarize_text(text, token):
+    api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.post(api_url, headers=headers, json={"inputs": text})
     try:
-        hf_token = st.secrets["streamlit-summarizer"]["token"]
-        api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
-        headers = {"Authorization": f"Bearer {hf_token}"}
+        return response.json()[0]['summary_text']
+    except:
+        return "Summary could not be generated."
 
+# ===== MAIN =====
+def main():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.username = ""
+
+    if not st.session_state.logged_in:
+        st.title("🔐 Login")
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            if authenticate(username, password):
+                st.session_state.logged_in = True
+                st.session_state.username = username
+                st.experimental_rerun()
+            else:
+                st.error("Invalid username or password")
+        return
+
+    st.sidebar.header("⚙️ Admin Panel")
+    st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
+    if st.sidebar.button("Logout"):
+        st.session_state.logged_in = False
+        st.experimental_rerun()
+
+    uploaded_file = st.file_uploader("📤 Upload CSV", type="csv")
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        save_upload_history(st.session_state.username, uploaded_file.name)
+
+        st.dataframe(df)
+        numeric_cols = df.select_dtypes(include='number').columns.tolist()
+        cat_cols = df.select_dtypes(include='object').columns.tolist()
+
+        available_charts = []
+        if len(numeric_cols) >= 2:
+            available_charts += ["Scatter Plot", "Line Plot"]
+        if len(numeric_cols) >= 1:
+            available_charts += ["Histogram", "Box Plot", "Heatmap"]
+        if len(cat_cols) >= 1:
+            available_charts += ["Pie Chart"]
+
+        selected_charts = st.multiselect("📈 Select charts to display", available_charts, default=available_charts[:2])
+
+        if len(numeric_cols) >= 2:
+            x_axis = st.selectbox("X-axis", numeric_cols, key="x")
+            y_axis = st.selectbox("Y-axis", numeric_cols, key="y")
+
+        fig_list = []
+        if "Scatter Plot" in available_charts:
+            fig, ax = plt.subplots()
+            sns.scatterplot(data=df, x=x_axis, y=y_axis, ax=ax)
+            ax.set_title("Scatter Plot")
+            if "Scatter Plot" in selected_charts:
+                st.pyplot(fig)
+            fig_list.append(("Scatter Plot", fig))
+
+        if "Line Plot" in available_charts:
+            fig, ax = plt.subplots()
+            df[[x_axis, y_axis]].plot(ax=ax)
+            ax.set_title("Line Plot")
+            if "Line Plot" in selected_charts:
+                st.pyplot(fig)
+            fig_list.append(("Line Plot", fig))
+
+        if "Histogram" in available_charts:
+            fig, ax = plt.subplots()
+            df[numeric_cols].hist(ax=ax)
+            plt.tight_layout()
+            if "Histogram" in selected_charts:
+                st.pyplot(fig)
+            fig_list.append(("Histogram", fig))
+
+        if "Box Plot" in available_charts:
+            fig, ax = plt.subplots()
+            sns.boxplot(data=df[numeric_cols], ax=ax)
+            ax.set_title("Box Plot")
+            if "Box Plot" in selected_charts:
+                st.pyplot(fig)
+            fig_list.append(("Box Plot", fig))
+
+        if "Heatmap" in available_charts:
+            fig, ax = plt.subplots()
+            sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+            ax.set_title("Correlation Heatmap")
+            if "Heatmap" in selected_charts:
+                st.pyplot(fig)
+            fig_list.append(("Heatmap", fig))
+
+        if "Pie Chart" in available_charts:
+            pie_data = df[cat_cols[0]].value_counts()
+            fig, ax = plt.subplots()
+            ax.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+            ax.axis('equal')
+            ax.set_title(f"Pie Chart of {cat_cols[0]}")
+            if "Pie Chart" in selected_charts:
+                st.pyplot(fig)
+            fig_list.append(("Pie Chart", fig))
+
+        st.subheader("📝 AI Text Summary")
         default_summary_text = df.head(15).to_string(index=False)
         text_input = st.text_area("Enter text to summarize", value=default_summary_text)
-
-        if st.button(f"Summarize {uploaded_file.name}") and text_input:
+        summary = None
+        if st.button("Summarize"):
             with st.spinner("Summarizing..."):
-                response = requests.post(api_url, headers=headers, json={"inputs": text_input})
-                summary = response.json()[0]['summary_text']
+                summary = summarize_text(text_input, st.secrets["streamlit-summarizer"]["token"])
                 st.success("Summary:")
                 st.write(summary)
-    except Exception as e:
-        st.error("Hugging Face token not found in secrets. Add it in `.streamlit/secrets.toml` under [streamlit-summarizer].")
 
-    # --- Export to PPT ---
-    st.subheader("📤 Export to PPT")
-    if st.button(f"Export {uploaded_file.name} to PPT"):
-        try:
+        if st.button("Export to PPT"):
             ppt = Presentation()
-            slide_layout = ppt.slide_layouts[0]
-            slide = ppt.slides.add_slide(slide_layout)
+            slide = ppt.slides.add_slide(ppt.slide_layouts[0])
             slide.shapes.title.text = "Data Analysis Report"
             slide.placeholders[1].text = f"Generated on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
-            # Data Table Slide
             table_slide = ppt.slides.add_slide(ppt.slide_layouts[5])
             table_slide.shapes.title.text = "Sample Data"
             table = table_slide.shapes.add_table(rows=min(len(df), 6)+1, cols=len(df.columns), left=Inches(0.5), top=Inches(1.2), width=Inches(9), height=Inches(2)).table
@@ -127,13 +179,11 @@ if uploaded_file is not None:
                 for col_idx, col in enumerate(df.columns):
                     table.cell(row_idx + 1, col_idx).text = str(df.iloc[row_idx, col_idx])
 
-            # Summary Slide
-            if 'summary' in locals():
+            if summary:
                 summary_slide = ppt.slides.add_slide(ppt.slide_layouts[1])
                 summary_slide.shapes.title.text = "Summary"
                 summary_slide.placeholders[1].text = summary
 
-            # Charts
             for title, fig in fig_list:
                 graph_slide = ppt.slides.add_slide(ppt.slide_layouts[5])
                 graph_slide.shapes.title.text = title
@@ -142,10 +192,14 @@ if uploaded_file is not None:
                     graph_slide.shapes.add_picture(tmpfile.name, Inches(1), Inches(1.5), height=Inches(4.5))
                     os.unlink(tmpfile.name)
 
-            ppt_bytes = BytesIO()
+            ppt_bytes = io.BytesIO()
             ppt.save(ppt_bytes)
             ppt_bytes.seek(0)
             st.download_button("Download PPT", ppt_bytes, file_name=f"{uploaded_file.name}_analysis.pptx")
 
-        except Exception as e:
-            st.error(f"Failed to export PPT: {e}")
+    if st.session_state.username == ADMIN_USERNAME:
+        st.subheader("📁 Upload History")
+        history = get_upload_history()
+        st.dataframe(pd.DataFrame(history))
+
+main()
