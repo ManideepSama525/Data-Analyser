@@ -30,31 +30,25 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 def connect_to_google_sheets(max_retries=3, delay=2):
     for attempt in range(max_retries):
         try:
-            # Step 1: Create credentials
             creds = Credentials.from_service_account_info(st.secrets["google_sheets"], scopes=scope)
-            # Step 2: Authorize the client
             client = gspread.authorize(creds)
-            # Step 3: Open the spreadsheet
             spreadsheet = client.open("user_database")
-            # Step 4: List available worksheets for debugging
             available_worksheets = [ws.title for ws in spreadsheet.worksheets()]
             st.write("Available worksheets in 'user_database':", available_worksheets)
             
-            # Step 5: Access or create the 'users' worksheet
             try:
                 auth_sheet = spreadsheet.worksheet("users")
             except gspread.exceptions.WorksheetNotFound:
                 st.warning("Worksheet 'users' not found. Creating it now...")
                 auth_sheet = spreadsheet.add_worksheet(title="users", rows=100, cols=2)
-                auth_sheet.append_row(["username", "password"])  # Add headers
+                auth_sheet.append_row(["username", "password"])
 
-            # Step 6: Access or create the 'upload_history' worksheet
             try:
                 history_sheet = spreadsheet.worksheet("upload_history")
             except gspread.exceptions.WorksheetNotFound:
                 st.warning("Worksheet 'upload_history' not found. Creating it now...")
                 history_sheet = spreadsheet.add_worksheet(title="upload_history", rows=100, cols=3)
-                history_sheet.append_row(["username", "filename", "timestamp"])  # Add headers
+                history_sheet.append_row(["username", "filename", "timestamp"])
 
             return auth_sheet, history_sheet
         except gspread.exceptions.SpreadsheetNotFound as e:
@@ -88,7 +82,9 @@ ADMIN_USERNAME = "manideep"
 @st.cache_data
 def get_users():
     try:
-        return auth_sheet.get_all_records()
+        users = auth_sheet.get_all_records()
+        st.write("Retrieved users from Google Sheet:", users)  # Debug: Show retrieved users
+        return users
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to fetch users: {e}")
         return []
@@ -97,7 +93,9 @@ def find_user(username):
     users = get_users()
     for user in users:
         if user['username'] == username:
+            st.write(f"Found user: {user}")  # Debug: Confirm user found
             return user
+    st.write(f"User '{username}' not found in Google Sheet.")  # Debug: User not found
     return None
 
 def add_user(username, password):
@@ -106,6 +104,7 @@ def add_user(username, password):
             raise ValueError("Username and password cannot be empty")
         hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         auth_sheet.append_row([username, hashed_pw])
+        st.write(f"Added user to Google Sheet: username={username}, hashed_password={hashed_pw}")  # Debug: Confirm user added
         return True
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to add user: {e}")
@@ -116,8 +115,13 @@ def add_user(username, password):
 
 def authenticate(username, password):
     user = find_user(username)
-    if user and bcrypt.checkpw(password.encode(), user['password'].encode()):
-        return True
+    if user:
+        stored_password = user['password']
+        st.write(f"Stored hashed password for {username}: {stored_password}")  # Debug: Show stored password
+        password_match = bcrypt.checkpw(password.encode(), stored_password.encode())
+        st.write(f"Password match for {username}: {password_match}")  # Debug: Show if password matches
+        if password_match:
+            return True
     return False
 
 def save_upload_history(username, filename):
@@ -158,7 +162,6 @@ def generate_charts(df):
         st.warning("No numeric columns found for chart generation.")
         return charts
 
-    # Scatter plot
     if numeric_df.shape[1] >= 2:
         fig1, ax1 = plt.subplots(figsize=(6, 4))
         sns.scatterplot(data=numeric_df, x=numeric_df.columns[0], y=numeric_df.columns[1], ax=ax1)
@@ -167,31 +170,26 @@ def generate_charts(df):
         ax1.set_ylabel(numeric_df.columns[1])
         charts["Scatter Plot"] = fig1
 
-    # Line plot
     fig2, ax2 = plt.subplots(figsize=(6, 4))
     numeric_df.plot(ax=ax2)
     ax2.set_title("Line Plot")
     charts["Line Plot"] = fig2
 
-    # Histogram
     fig3, ax3 = plt.subplots(figsize=(6, 4))
     numeric_df.hist(ax=ax3)
     plt.tight_layout()
     charts["Histogram"] = fig3
 
-    # Box plot
     fig4, ax4 = plt.subplots(figsize=(6, 4))
     sns.boxplot(data=numeric_df, ax=ax4)
     ax4.set_title("Box Plot")
     charts["Box Plot"] = fig4
 
-    # Heatmap
     fig5, ax5 = plt.subplots(figsize=(6, 4))
     sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax5)
     ax5.set_title("Correlation Heatmap")
     charts["Heatmap"] = fig5
 
-    # Pie chart
     cat_df = df.select_dtypes(include=['object'])
     if not cat_df.empty:
         col = cat_df.columns[0]
