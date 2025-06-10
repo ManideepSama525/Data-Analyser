@@ -2,7 +2,6 @@
 
 # (Rest of the imports and setup remain unchanged)
 
-...
 
         st.subheader("📈 Select Graphs to Display")
         available_charts = []
