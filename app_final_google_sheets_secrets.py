@@ -155,7 +155,7 @@ if not st.session_state.logged_in:
             if user in users and bcrypt.checkpw(passwd.encode(), users[user].encode()):
                 st.session_state.logged_in = True
                 st.session_state.username = user
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid credentials")
 
