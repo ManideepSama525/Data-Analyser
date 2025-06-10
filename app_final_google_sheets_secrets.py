@@ -1,6 +1,6 @@
 import streamlit as st
 import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+from google.oauth2.service_account import Credentials
 import bcrypt
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -20,7 +20,7 @@ st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 # ===== GOOGLE SHEETS AUTH =====
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_dict = st.secrets["google_sheets"]
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
 client = gspread.authorize(creds)
 
 auth_sheet = client.open("streamlit_user_auth").worksheet("users")
@@ -168,7 +168,7 @@ def main():
             ppt = Presentation()
             slide = ppt.slides.add_slide(ppt.slide_layouts[0])
             slide.shapes.title.text = "Data Analysis Report"
-            slide.placeholders[1].text = f"Generated on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            slide.placeholders[1].text = f"Generated on {datetime.datetime.now().strftime('%Y-%m-d %H:%M:%S')}"
 
             table_slide = ppt.slides.add_slide(ppt.slide_layouts[5])
             table_slide.shapes.title.text = "Sample Data"
