@@ -34,17 +34,34 @@ def connect_to_google_sheets(max_retries=3, delay=2):
             creds = Credentials.from_service_account_info(st.secrets["google_sheets"], scopes=scope)
             # Step 2: Authorize the client
             client = gspread.authorize(creds)
-            # Step 3: Open the spreadsheet (updated to user_database)
+            # Step 3: Open the spreadsheet
             spreadsheet = client.open("user_database")
-            # Step 4: Access the worksheets
-            auth_sheet = spreadsheet.worksheet("users")
-            history_sheet = spreadsheet.worksheet("upload_history")
+            # Step 4: List available worksheets for debugging
+            available_worksheets = [ws.title for ws in spreadsheet.worksheets()]
+            st.write("Available worksheets in 'user_database':", available_worksheets)
+            
+            # Step 5: Access or create the 'users' worksheet
+            try:
+                auth_sheet = spreadsheet.worksheet("users")
+            except gspread.exceptions.WorksheetNotFound:
+                st.warning("Worksheet 'users' not found. Creating it now...")
+                auth_sheet = spreadsheet.add_worksheet(title="users", rows=100, cols=2)
+                auth_sheet.append_row(["username", "password"])  # Add headers
+
+            # Step 6: Access or create the 'upload_history' worksheet
+            try:
+                history_sheet = spreadsheet.worksheet("upload_history")
+            except gspread.exceptions.WorksheetNotFound:
+                st.warning("Worksheet 'upload_history' not found. Creating it now...")
+                history_sheet = spreadsheet.add_worksheet(title="upload_history", rows=100, cols=3)
+                history_sheet.append_row(["username", "filename", "timestamp"])  # Add headers
+
             return auth_sheet, history_sheet
         except gspread.exceptions.SpreadsheetNotFound as e:
             st.error(f"Spreadsheet 'user_database' not found. Please create it and share it with the service account.")
             st.stop()
         except gspread.exceptions.WorksheetNotFound as e:
-            st.error(f"Worksheet not found: {e}. Ensure 'users' and 'upload_history' worksheets exist in the spreadsheet.")
+            st.error(f"Worksheet not found: {e}. Available worksheets: {available_worksheets}. Ensure 'users' and 'upload_history' worksheets exist in the spreadsheet.")
             st.stop()
         except gspread.exceptions.APIError as e:
             st.error(f"Google Sheets API error: {e}")
