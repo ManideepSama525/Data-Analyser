@@ -273,19 +273,18 @@ def main():
                     st.success("User created! Please login.")
         return
 
-    # Display available files at the top for all users
-    st.subheader("📁 Available Files")
-    history = get_upload_history()
-    if history:
-        st.dataframe(pd.DataFrame(history), use_container_width=True)
-    else:
-        st.info("No files have been uploaded yet.")
-
     # Admin controls in the sidebar
     st.sidebar.header("⚙️ Admin Panel")
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.session_state.username == ADMIN_USERNAME:
         st.sidebar.subheader("Admin Controls")
+        # Display upload history for admin only
+        st.sidebar.subheader("📁 Upload History")
+        history = get_upload_history()
+        if history:
+            st.sidebar.dataframe(pd.DataFrame(history), use_container_width=True)
+        else:
+            st.sidebar.info("No files have been uploaded yet.")
         # Delete user feature
         users = get_users()
         user_list = [user['username'] for user in users if user['username'] != ADMIN_USERNAME]
