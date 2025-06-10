@@ -30,6 +30,7 @@ except Exception as e:
 ADMIN_USERNAME = "manideep"
 
 # ==================== AUTH FUNCTIONS ====================
+@st.cache_data
 def get_users():
     try:
         return auth_sheet.get_all_records()
@@ -71,6 +72,7 @@ def save_upload_history(username, filename):
     except gspread.exceptions.APIError as e:
         st.warning(f"Failed to save upload history: {e}")
 
+@st.cache_data
 def get_upload_history():
     try:
         return history_sheet.get_all_records()
@@ -103,7 +105,7 @@ def generate_charts(df):
 
     # Scatter plot
     if numeric_df.shape[1] >= 2:
-        fig1, ax1 = plt.subplots()
+        fig1, ax1 = plt.subplots(figsize=(6, 4))
         sns.scatterplot(data=numeric_df, x=numeric_df.columns[0], y=numeric_df.columns[1], ax=ax1)
         ax1.set_title("Scatter Plot")
         ax1.set_xlabel(numeric_df.columns[0])
@@ -111,25 +113,25 @@ def generate_charts(df):
         charts["Scatter Plot"] = fig1
 
     # Line plot
-    fig2, ax2 = plt.subplots()
+    fig2, ax2 = plt.subplots(figsize=(6, 4))
     numeric_df.plot(ax=ax2)
     ax2.set_title("Line Plot")
     charts["Line Plot"] = fig2
 
     # Histogram
-    fig3, ax3 = plt.subplots()
+    fig3, ax3 = plt.subplots(figsize=(6, 4))
     numeric_df.hist(ax=ax3)
     plt.tight_layout()
     charts["Histogram"] = fig3
 
     # Box plot
-    fig4, ax4 = plt.subplots()
+    fig4, ax4 = plt.subplots(figsize=(6, 4))
     sns.boxplot(data=numeric_df, ax=ax4)
     ax4.set_title("Box Plot")
     charts["Box Plot"] = fig4
 
     # Heatmap
-    fig5, ax5 = plt.subplots()
+    fig5, ax5 = plt.subplots(figsize=(6, 4))
     sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax5)
     ax5.set_title("Correlation Heatmap")
     charts["Heatmap"] = fig5
@@ -139,7 +141,7 @@ def generate_charts(df):
     if not cat_df.empty:
         col = cat_df.columns[0]
         pie_data = df[col].value_counts()
-        fig6, ax6 = plt.subplots()
+        fig6, ax6 = plt.subplots(figsize=(6, 4))
         ax6.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
         ax6.axis('equal')
         ax6.set_title(f"Pie Chart of {col}")
@@ -153,23 +155,23 @@ def export_to_ppt(charts, summary):
     title_slide_layout = prs.slide_layouts[0]
     slide = prs.slides.add_slide(title_slide_layout)
     slide.shapes.title.text = "Data Analysis Report"
-    slide.placeholders[1].text = "Generated via Streamlit"
+    slide.placeholders[1].text = f"Generated via Streamlit on {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
     if summary and summary != "Summary could not be generated.":
         bullet_slide_layout = prs.slide_layouts[1]
         slide = prs.slides.add_slide(bullet_slide_layout)
         slide.shapes.title.text = "CSV Summary"
         content = slide.placeholders[1].text_frame
-        content.text = summary  # Use full summary for better formatting
+        content.text = summary
 
     for title, fig in charts.items():
         slide = prs.slides.add_slide(prs.slide_layouts[5])
         slide.shapes.title.text = title
         img_stream = io.BytesIO()
-        fig.savefig(img_stream, format='png', bbox_inches='tight')
+        fig.savefig(img_stream, format='png', bbox_inches='tight', dpi=150)
         img_stream.seek(0)
         slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(8))
-        plt.close(fig)  # Close figure to free memory
+        plt.close(fig)
 
     ppt_stream = io.BytesIO()
     prs.save(ppt_stream)
@@ -215,7 +217,9 @@ def main():
     if uploaded_file:
         try:
             df = pd.read_csv(uploaded_file)
-            st.dataframe(df)
+            st.subheader("📊 Uploaded Data")
+            st.dataframe(df, use_container_width=True)
+            st.write("Column types:", df.dtypes)
 
             save_upload_history(st.session_state.username, uploaded_file.name)
 
@@ -224,14 +228,18 @@ def main():
             search_val = st.text_input("Enter search keyword")
             if search_val:
                 filtered_df = df[df[filter_col].astype(str).str.contains(search_val, case=False, na=False)]
-                st.dataframe(filtered_df)
+                st.dataframe(filtered_df, use_container_width=True)
             else:
                 filtered_df = df
 
             st.subheader("📈 Chart Builder")
             all_charts = generate_charts(df)
             chart_options = list(all_charts.keys())
-            selected_charts = st.multiselect("Select charts to view in app (all charts will be in PPT)", chart_options, default=chart_options[:2] if chart_options else [])
+            selected_charts = st.multiselect(
+                "Select charts to view in app (all charts will be in PPT)",
+                chart_options,
+                default=chart_options[:2] if chart_options else []
+            )
 
             if selected_charts:
                 cols = st.columns(2)
@@ -239,18 +247,27 @@ def main():
                     with cols[i % 2]:
                         st.pyplot(all_charts[chart])
 
-            token = st.secrets["hugging_face"]["token"]
-            summary = summarize_csv(df, token)
-            if summary and summary != "Summary could not be generated.":
-                st.subheader("📝 CSV Summary")
-                st.write(summary)
+            try:
+                token = st.secrets["hugging_face"]["token"]
+                summary = summarize_csv(df, token)
+                if summary and summary != "Summary could not be generated.":
+                    st.subheader("📝 CSV Summary")
+                    st.write(summary)
+            except KeyError:
+                st.error("Hugging Face token not found in secrets. Please add it to secrets.toml.")
+                summary = None
 
             if st.button("Export to PPT"):
                 if not all_charts and not summary:
                     st.warning("No charts or summary to export.")
                 else:
                     ppt_stream = export_to_ppt(all_charts, summary)
-                    st.download_button("Download PPT", ppt_stream, file_name="data_analysis_report.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+                    st.download_button(
+                        "Download PPT",
+                        ppt_stream,
+                        file_name="data_analysis_report.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    )
 
         except pd.errors.ParserError:
             st.error("Invalid CSV format. Please upload a valid CSV file.")
@@ -261,7 +278,7 @@ def main():
         st.subheader("📁 Upload History")
         history = get_upload_history()
         if history:
-            st.dataframe(pd.DataFrame(history))
+            st.dataframe(pd.DataFrame(history), use_container_width=True)
         else:
             st.info("No upload history available.")
 
