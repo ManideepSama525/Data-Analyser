@@ -1,12 +1,9 @@
 streamlit
-streamlit-authenticator
 pandas
+numpy
+plotly
+openpyxl
+streamlit-authenticator
 matplotlib
 seaborn
-python-pptx
 requests
-PyYAML
-openpyxl
-scikit-learn
-transformers
-gspread
