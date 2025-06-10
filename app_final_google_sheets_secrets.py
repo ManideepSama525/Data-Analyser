@@ -83,7 +83,7 @@ ADMIN_USERNAME = "manideep"
 def get_users():
     try:
         users = auth_sheet.get_all_records()
-        st.write("Retrieved users from Google Sheet:", users)  # Debug: Show retrieved users
+        st.write("Retrieved users from Google Sheet:", users)
         return users
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to fetch users: {e}")
@@ -93,9 +93,9 @@ def find_user(username):
     users = get_users()
     for user in users:
         if user['username'] == username:
-            st.write(f"Found user: {user}")  # Debug: Confirm user found
+            st.write(f"Found user: {user}")
             return user
-    st.write(f"User '{username}' not found in Google Sheet.")  # Debug: User not found
+    st.write(f"User '{username}' not found in Google Sheet.")
     return None
 
 def add_user(username, password):
@@ -104,7 +104,7 @@ def add_user(username, password):
             raise ValueError("Username and password cannot be empty")
         hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         auth_sheet.append_row([username, hashed_pw])
-        st.write(f"Added user to Google Sheet: username={username}, hashed_password={hashed_pw}")  # Debug: Confirm user added
+        st.write(f"Added user to Google Sheet: username={username}, hashed_password={hashed_pw}")
         return True
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to add user: {e}")
@@ -117,9 +117,9 @@ def authenticate(username, password):
     user = find_user(username)
     if user:
         stored_password = user['password']
-        st.write(f"Stored hashed password for {username}: {stored_password}")  # Debug: Show stored password
+        st.write(f"Stored hashed password for {username}: {stored_password}")
         password_match = bcrypt.checkpw(password.encode(), stored_password.encode())
-        st.write(f"Password match for {username}: {password_match}")  # Debug: Show if password matches
+        st.write(f"Password match for {username}: {password_match}")
         if password_match:
             return True
     return False
@@ -134,7 +134,8 @@ def save_upload_history(username, filename):
 @st.cache_data
 def get_upload_history():
     try:
-        return history_sheet.get_all_records()
+        history = history_sheet.get_all_records()
+        return history
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to fetch upload history: {e}")
         return []
@@ -260,6 +261,14 @@ def main():
                     st.success("User created! Please login.")
         return
 
+    # Display available files at the top for all users
+    st.subheader("📁 Available Files")
+    history = get_upload_history()
+    if history:
+        st.dataframe(pd.DataFrame(history), use_container_width=True)
+    else:
+        st.info("No files have been uploaded yet.")
+
     st.sidebar.header("⚙️ Admin Panel")
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.sidebar.button("Logout"):
@@ -326,14 +335,6 @@ def main():
             st.error("Invalid CSV format. Please upload a valid CSV file.")
         except Exception as e:
             st.error(f"Error processing CSV: {e}")
-
-    if st.session_state.username == ADMIN_USERNAME:
-        st.subheader("📁 Upload History")
-        history = get_upload_history()
-        if history:
-            st.dataframe(pd.DataFrame(history), use_container_width=True)
-        else:
-            st.info("No upload history available.")
 
 if __name__ == "__main__":
     main()
