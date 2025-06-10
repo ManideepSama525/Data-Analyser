@@ -11,6 +11,7 @@ import io
 import datetime
 import base64
 import requests
+import json
 
 # ==================== CONFIG ====================
 st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_state="expanded")
@@ -19,19 +20,8 @@ st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 # ==================== GOOGLE SHEETS SETUP ====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-secrets = st.secrets["google_sheets"]
-creds_dict = {
-    "type": secrets["type"],
-    "project_id": secrets["project_id"],
-    "private_key_id": secrets["private_key_id"],
-    "private_key": secrets["private_key"],
-    "client_email": secrets["client_email"],
-    "client_id": secrets["client_id"],
-    "auth_uri": secrets["auth_uri"],
-    "token_uri": secrets["token_uri"],
-    "auth_provider_x509_cert_url": secrets["auth_provider_x509_cert_url"],
-    "client_x509_cert_url": secrets["client_x509_cert_url"]
-}
+with open("streamlit-user-auth-bafb09360eed.json") as f:
+    creds_dict = json.load(f)
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
@@ -200,7 +190,7 @@ def main():
             filter_col = st.selectbox("Select column to search/filter", df.columns)
             search_val = st.text_input("Enter search keyword")
             if search_val:
-                filtered_df = df[df[filter_col].astype(str).str.contains(search_val)]
+                filtered_df = df[df[filter_col].astype(str).str.contains(search_val, na=False)]
                 st.dataframe(filtered_df)
             else:
                 filtered_df = df
