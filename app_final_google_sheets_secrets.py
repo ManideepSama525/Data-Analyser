@@ -93,6 +93,35 @@ def add_user(username, password):
         st.error(str(e))
         return False
 
+def delete_user(username):
+    try:
+        if username == ADMIN_USERNAME:
+            st.error("Cannot delete the admin user.")
+            return False
+        users = auth_sheet.get_all_values()
+        user_row = None
+        for idx, row in enumerate(users):
+            if row[0] == username:
+                user_row = idx + 1  # 1-based index for gspread
+                break
+        if user_row is None:
+            st.error(f"User '{username}' not found.")
+            return False
+        auth_sheet.delete_rows(user_row)
+        # Also remove the user's upload history
+        history = history_sheet.get_all_values()
+        rows_to_delete = []
+        for idx, row in enumerate(history[1:], start=2):  # Start from 2 to skip header
+            if row[0] == username:
+                rows_to_delete.append(idx)
+        for row_idx in sorted(rows_to_delete, reverse=True):
+            history_sheet.delete_rows(row_idx)
+        st.success(f"User '{username}' and their upload history have been deleted.")
+        return True
+    except gspread.exceptions.APIError as e:
+        st.error(f"Failed to delete user: {e}")
+        return False
+
 def authenticate(username, password):
     user = find_user(username)
     if user and bcrypt.checkpw(password.encode(), user['password'].encode()):
@@ -257,6 +286,17 @@ def main():
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.session_state.username == ADMIN_USERNAME:
         st.sidebar.subheader("Admin Controls")
+        # Delete user feature
+        users = get_users()
+        user_list = [user['username'] for user in users if user['username'] != ADMIN_USERNAME]
+        if user_list:
+            selected_user = st.sidebar.selectbox("Select user to delete", user_list)
+            if st.sidebar.button("Delete User"):
+                delete_user(selected_user)
+                st.rerun()
+        else:
+            st.sidebar.info("No users available to delete.")
+        # Clear upload history feature
         if st.sidebar.button("Clear Upload History"):
             clear_upload_history()
             st.rerun()
