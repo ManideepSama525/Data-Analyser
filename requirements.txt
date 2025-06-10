@@ -1,11 +1,12 @@
 streamlit
-gspread
-oauth2client
-bcrypt
+streamlit-authenticator
 pandas
 matplotlib
 seaborn
 python-pptx
-toml
 requests
-hf_token
+PyYAML
+openpyxl
+scikit-learn
+transformers
+gspread
