@@ -1,112 +1,8 @@
-# Streamlit App with Google Sheets Auth, Hugging Face Summarizer, CSV Upload, and Selectable Graphs with Full PPT Export
+# Streamlit App with Graph Controls, Custom Axes, and Summary Export
 
-# Streamlit App with Google Sheets Auth, Hugging Face Summarizer, CSV Upload, and Selectable Graphs with Full PPT Export
+# (Rest of the imports and setup remain unchanged)
 
-import streamlit as st
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly.express as px
-import tempfile
-import os
-import requests
-from io import BytesIO
-from pptx import Presentation
-from pptx.util import Inches
-import gspread
-from google.oauth2.service_account import Credentials
-import bcrypt
-import datetime
-
-# --- Page Config ---
-st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_state="expanded")
-
-# --- Theme Switcher ---
-if "theme" not in st.session_state:
-    st.session_state.theme = "dark"
-mode = st.sidebar.radio("Theme Mode", ["dark", "light"], index=0 if st.session_state.theme == "dark" else 1)
-if mode != st.session_state.theme:
-    st.session_state.theme = mode
-    st.rerun()
-
-st.markdown(
-    f"""
-    <style>
-    html, body, [class*="css"]  {{
-        background-color: {'#0e1117' if st.session_state.theme == 'dark' else 'white'};
-        color: {'white' if st.session_state.theme == 'dark' else 'black'};
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
-# --- Google Sheets Setup ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_info(st.secrets["google_sheets"], scopes=scope)
-client = gspread.authorize(creds)
-spreadsheet = client.open("user_database")
-
-try:
-    auth_sheet = spreadsheet.worksheet("users")
-except gspread.exceptions.WorksheetNotFound:
-    auth_sheet = spreadsheet.add_worksheet(title="users", rows=100, cols=2)
-    auth_sheet.append_row(["username", "password"])
-
-# --- Auth Functions ---
-@st.cache_data
-def get_users():
-    return auth_sheet.get_all_records()
-
-def find_user(username):
-    users = get_users()
-    for user in users:
-        if user['username'] == username:
-            return user
-    return None
-
-def authenticate(username, password):
-    user = find_user(username)
-    if user and bcrypt.checkpw(password.encode(), user['password'].encode()):
-        return True
-    return False
-
-# --- Auth UI ---
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.username = ""
-
-if not st.session_state.logged_in:
-    st.title("🔐 Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
-        if authenticate(username, password):
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            st.rerun()
-        else:
-            st.error("Invalid username or password")
-    st.stop()
-
-# --- Main App ---
-st.sidebar.success(f"Logged in as: {st.session_state.username}")
-if st.sidebar.button("Logout"):
-    st.session_state.logged_in = False
-    st.experimental_rerun()
-
-st.title("📊 Data Analyzer")
-
-uploaded_files = st.file_uploader("Upload CSV files", type="csv", accept_multiple_files=True)
-
-if uploaded_files:
-    for uploaded_file in uploaded_files:
-        df = pd.read_csv(uploaded_file)
-        st.header(f"Dataset: {uploaded_file.name}")
-        st.dataframe(df)
-
-        numeric_cols = df.select_dtypes(include=['float64', 'int64']).columns
-        cat_cols = df.select_dtypes(include=['object']).columns
+...
 
         st.subheader("📈 Select Graphs to Display")
         available_charts = []
@@ -119,27 +15,32 @@ if uploaded_files:
 
         selected_charts = st.multiselect("Select the charts you want to view on screen", available_charts, default=available_charts[:2])
 
+        # Axes selectors for scatter and line plot
+        if len(numeric_cols) >= 2:
+            x_axis = st.selectbox("Select X-axis", numeric_cols, key=f"x_{uploaded_file.name}")
+            y_axis = st.selectbox("Select Y-axis", numeric_cols, key=f"y_{uploaded_file.name}")
+
         st.subheader("📊 Selected Charts")
         fig_list = []
 
         if "Scatter Plot" in available_charts:
-            fig1, ax1 = plt.subplots()
-            sns.scatterplot(data=df, x=numeric_cols[0], y=numeric_cols[1], ax=ax1)
+            fig1, ax1 = plt.subplots(figsize=(6, 4))
+            sns.scatterplot(data=df, x=x_axis, y=y_axis, ax=ax1)
             ax1.set_title("Scatter Plot")
             if "Scatter Plot" in selected_charts:
                 st.pyplot(fig1)
             fig_list.append(("Scatter Plot", fig1))
 
         if "Line Plot" in available_charts:
-            fig2, ax2 = plt.subplots()
-            df[numeric_cols].plot(ax=ax2)
+            fig2, ax2 = plt.subplots(figsize=(6, 4))
+            df[[x_axis, y_axis]].plot(ax=ax2)
             ax2.set_title("Line Plot")
             if "Line Plot" in selected_charts:
                 st.pyplot(fig2)
             fig_list.append(("Line Plot", fig2))
 
         if "Histogram" in available_charts:
-            fig3, ax3 = plt.subplots()
+            fig3, ax3 = plt.subplots(figsize=(6, 4))
             df[numeric_cols].hist(ax=ax3)
             plt.tight_layout()
             if "Histogram" in selected_charts:
@@ -147,7 +48,7 @@ if uploaded_files:
             fig_list.append(("Histogram", fig3))
 
         if "Box Plot" in available_charts:
-            fig4, ax4 = plt.subplots()
+            fig4, ax4 = plt.subplots(figsize=(6, 4))
             sns.boxplot(data=df[numeric_cols], ax=ax4)
             ax4.set_title("Box Plot")
             if "Box Plot" in selected_charts:
@@ -155,7 +56,7 @@ if uploaded_files:
             fig_list.append(("Box Plot", fig4))
 
         if "Heatmap" in available_charts:
-            fig5, ax5 = plt.subplots()
+            fig5, ax5 = plt.subplots(figsize=(6, 4))
             sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax5)
             ax5.set_title("Correlation Heatmap")
             if "Heatmap" in selected_charts:
@@ -164,7 +65,7 @@ if uploaded_files:
 
         if "Pie Chart" in available_charts:
             pie_data = df[cat_cols[0]].value_counts()
-            fig6, ax6 = plt.subplots()
+            fig6, ax6 = plt.subplots(figsize=(6, 4))
             ax6.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
             ax6.set_title(f"Pie Chart of {cat_cols[0]}")
             ax6.axis('equal')
@@ -207,6 +108,11 @@ if uploaded_files:
                 for row_idx in range(min(len(df), 6)):
                     for col_idx, col in enumerate(df.columns):
                         table.cell(row_idx + 1, col_idx).text = str(df.iloc[row_idx, col_idx])
+
+                if 'summary' in locals():
+                    summary_slide = ppt.slides.add_slide(ppt.slide_layouts[1])
+                    summary_slide.shapes.title.text = "Summary"
+                    summary_slide.placeholders[1].text = summary
 
                 for title, fig in fig_list:
                     graph_slide = ppt.slides.add_slide(ppt.slide_layouts[5])
