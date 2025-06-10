@@ -1,9 +1,10 @@
 streamlit
 pandas
-numpy
-plotly
-openpyxl
-streamlit-authenticator
 matplotlib
 seaborn
+plotly
+python-pptx
 requests
+gspread
+bcrypt
+google-auth
