@@ -125,9 +125,10 @@ if authentication_status:
                 except Exception as e:
                     st.error(f"Failed to export PPT: {e}")
 
-else:
-    st.error("Please log in to access the app.")
-elif authentication_status is False:
+if authentication_status is False:
     st.error("Username or password is incorrect")
 elif authentication_status is None:
     st.warning("Please enter your username and password")
+else:
+    st.error("Please log in to access the app.")
+
