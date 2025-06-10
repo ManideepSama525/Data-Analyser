@@ -33,29 +33,22 @@ def connect_to_google_sheets(max_retries=3, delay=2):
             creds = Credentials.from_service_account_info(st.secrets["google_sheets"], scopes=scope)
             client = gspread.authorize(creds)
             spreadsheet = client.open("user_database")
-            available_worksheets = [ws.title for ws in spreadsheet.worksheets()]
-            st.write("Available worksheets in 'user_database':", available_worksheets)
             
             try:
                 auth_sheet = spreadsheet.worksheet("users")
             except gspread.exceptions.WorksheetNotFound:
-                st.warning("Worksheet 'users' not found. Creating it now...")
                 auth_sheet = spreadsheet.add_worksheet(title="users", rows=100, cols=2)
                 auth_sheet.append_row(["username", "password"])
 
             try:
                 history_sheet = spreadsheet.worksheet("upload_history")
             except gspread.exceptions.WorksheetNotFound:
-                st.warning("Worksheet 'upload_history' not found. Creating it now...")
                 history_sheet = spreadsheet.add_worksheet(title="upload_history", rows=100, cols=3)
                 history_sheet.append_row(["username", "filename", "timestamp"])
 
             return auth_sheet, history_sheet
         except gspread.exceptions.SpreadsheetNotFound as e:
             st.error(f"Spreadsheet 'user_database' not found. Please create it and share it with the service account.")
-            st.stop()
-        except gspread.exceptions.WorksheetNotFound as e:
-            st.error(f"Worksheet not found: {e}. Available worksheets: {available_worksheets}. Ensure 'users' and 'upload_history' worksheets exist in the spreadsheet.")
             st.stop()
         except gspread.exceptions.APIError as e:
             st.error(f"Google Sheets API error: {e}")
@@ -82,9 +75,7 @@ ADMIN_USERNAME = "manideep"
 @st.cache_data
 def get_users():
     try:
-        users = auth_sheet.get_all_records()
-        st.write("Retrieved users from Google Sheet:", users)
-        return users
+        return auth_sheet.get_all_records()
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to fetch users: {e}")
         return []
@@ -93,9 +84,7 @@ def find_user(username):
     users = get_users()
     for user in users:
         if user['username'] == username:
-            st.write(f"Found user: {user}")
             return user
-    st.write(f"User '{username}' not found in Google Sheet.")
     return None
 
 def add_user(username, password):
@@ -104,7 +93,6 @@ def add_user(username, password):
             raise ValueError("Username and password cannot be empty")
         hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
         auth_sheet.append_row([username, hashed_pw])
-        st.write(f"Added user to Google Sheet: username={username}, hashed_password={hashed_pw}")
         return True
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to add user: {e}")
@@ -115,13 +103,8 @@ def add_user(username, password):
 
 def authenticate(username, password):
     user = find_user(username)
-    if user:
-        stored_password = user['password']
-        st.write(f"Stored hashed password for {username}: {stored_password}")
-        password_match = bcrypt.checkpw(password.encode(), stored_password.encode())
-        st.write(f"Password match for {username}: {password_match}")
-        if password_match:
-            return True
+    if user and bcrypt.checkpw(password.encode(), user['password'].encode()):
+        return True
     return False
 
 def save_upload_history(username, filename):
