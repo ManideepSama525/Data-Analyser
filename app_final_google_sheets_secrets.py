@@ -1,5 +1,7 @@
 # Streamlit App with Google Sheets Auth, Hugging Face Summarizer, CSV Upload, and Selectable Graphs with Full PPT Export
 
+# Streamlit App with Google Sheets Auth, Hugging Face Summarizer, CSV Upload, and Selectable Graphs with Full PPT Export
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -176,7 +178,9 @@ if uploaded_files:
             api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
             headers = {"Authorization": f"Bearer {hf_token}"}
 
-            text_input = st.text_area("Enter text to summarize")
+            default_summary_text = df.head(15).to_string(index=False)
+            text_input = st.text_area("Enter text to summarize", value=default_summary_text)
+
             if st.button(f"Summarize {uploaded_file.name}") and text_input:
                 with st.spinner("Summarizing..."):
                     response = requests.post(api_url, headers=headers, json={"inputs": text_input})
