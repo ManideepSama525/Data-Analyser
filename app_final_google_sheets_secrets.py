@@ -10,22 +10,60 @@ from pptx.util import Inches
 import io
 import datetime
 import requests
+import time
 
 # ==================== CONFIG ====================
 st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_state="expanded")
 st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 
 # ==================== GOOGLE SHEETS SETUP ====================
+# Note: Ensure the following setup in Google Sheets:
+# 1. Create a spreadsheet named exactly "user_database".
+# 2. Share it with the service account email: streamlit-user-auth@streamlit-user-auth.iam.gserviceaccount.com (Editor access).
+# 3. Create two worksheets: "users" (columns: username, password) and "upload_history" (columns: username, filename, timestamp).
+# 4. Add an admin user manually to the "users" worksheet:
+#    - Run: import bcrypt; hashed = bcrypt.hashpw("your_password".encode(), bcrypt.gensalt()).decode()
+#    - Add row: username: manideep, password: <hashed_password>
+
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-try:
-    creds = Credentials.from_service_account_info(st.secrets["google_sheets"], scopes=scope)
-    client = gspread.authorize(creds)
-    auth_sheet = client.open("streamlit_user_auth").worksheet("users")
-    history_sheet = client.open("streamlit_user_auth").worksheet("upload_history")
-except Exception as e:
-    st.error(f"Failed to connect to Google Sheets: {e}")
-    st.stop()
+def connect_to_google_sheets(max_retries=3, delay=2):
+    for attempt in range(max_retries):
+        try:
+            # Step 1: Create credentials
+            creds = Credentials.from_service_account_info(st.secrets["google_sheets"], scopes=scope)
+            # Step 2: Authorize the client
+            client = gspread.authorize(creds)
+            # Step 3: Open the spreadsheet (updated to user_database)
+            spreadsheet = client.open("user_database")
+            # Step 4: Access the worksheets
+            auth_sheet = spreadsheet.worksheet("users")
+            history_sheet = spreadsheet.worksheet("upload_history")
+            return auth_sheet, history_sheet
+        except gspread.exceptions.SpreadsheetNotFound as e:
+            st.error(f"Spreadsheet 'user_database' not found. Please create it and share it with the service account.")
+            st.stop()
+        except gspread.exceptions.WorksheetNotFound as e:
+            st.error(f"Worksheet not found: {e}. Ensure 'users' and 'upload_history' worksheets exist in the spreadsheet.")
+            st.stop()
+        except gspread.exceptions.APIError as e:
+            st.error(f"Google Sheets API error: {e}")
+            if attempt < max_retries - 1:
+                st.warning(f"Retrying... ({attempt + 1}/{max_retries})")
+                time.sleep(delay)
+            else:
+                st.error("Max retries reached. Please check your Google Sheets setup.")
+                st.stop()
+        except Exception as e:
+            st.error(f"Failed to connect to Google Sheets: {e}")
+            if attempt < max_retries - 1:
+                st.warning(f"Retrying... ({attempt + 1}/{max_retries})")
+                time.sleep(delay)
+            else:
+                st.error("Max retries reached. Unable to connect to Google Sheets.")
+                st.stop()
+
+auth_sheet, history_sheet = connect_to_google_sheets()
 
 ADMIN_USERNAME = "manideep"
 
