@@ -17,16 +17,27 @@ st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_st
 st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 
 # ==================== GOOGLE SHEETS SETUP ====================
-try:
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("google_sheets_secret.json", scope)
-    client = gspread.authorize(creds)
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-    auth_sheet = client.open("streamlit_user_auth").worksheet("users")
-    history_sheet = client.open("streamlit_user_auth").worksheet("upload_history")
-except FileNotFoundError:
-    st.error("Missing `google_sheets_secret.json`. Please upload the credentials file to Streamlit Cloud.")
-    st.stop()
+secrets = st.secrets["google_sheets"]
+creds_dict = {
+    "type": secrets["type"],
+    "project_id": secrets["project_id"],
+    "private_key_id": secrets["private_key_id"],
+    "private_key": secrets["private_key"],
+    "client_email": secrets["client_email"],
+    "client_id": secrets["client_id"],
+    "auth_uri": secrets["auth_uri"],
+    "token_uri": secrets["token_uri"],
+    "auth_provider_x509_cert_url": secrets["auth_provider_x509_cert_url"],
+    "client_x509_cert_url": secrets["client_x509_cert_url"]
+}
+
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+client = gspread.authorize(creds)
+
+auth_sheet = client.open("streamlit_user_auth").worksheet("users")
+history_sheet = client.open("streamlit_user_auth").worksheet("upload_history")
 
 ADMIN_USERNAME = "manideep"
 
@@ -73,7 +84,10 @@ def summarize_csv(df, token):
 # ==================== CHART GENERATION ====================
 def generate_charts(df):
     charts = {}
-    numeric_df = df.select_dtypes(include=['number'])
+    numeric_df = df.select_dtypes(include=['number']).dropna(axis=1, how='all')
+
+    if numeric_df.shape[1] < 1:
+        return charts
 
     # Scatter plot
     if numeric_df.shape[1] >= 2:
@@ -83,41 +97,39 @@ def generate_charts(df):
         charts["Scatter Plot"] = fig1
 
     # Line plot
-    if not numeric_df.empty:
-        fig2, ax2 = plt.subplots()
-        numeric_df.plot(ax=ax2)
-        ax2.set_title("Line Plot")
-        charts["Line Plot"] = fig2
+    fig2, ax2 = plt.subplots()
+    numeric_df.plot(ax=ax2)
+    ax2.set_title("Line Plot")
+    charts["Line Plot"] = fig2
 
-        # Histogram
-        fig3, ax3 = plt.subplots()
-        numeric_df.hist(ax=ax3)
-        plt.tight_layout()
-        charts["Histogram"] = fig3
+    # Histogram
+    fig3, ax3 = plt.subplots()
+    numeric_df.hist(ax=ax3)
+    plt.tight_layout()
+    charts["Histogram"] = fig3
 
-        # Box plot
-        fig4, ax4 = plt.subplots()
-        sns.boxplot(data=numeric_df, ax=ax4)
-        ax4.set_title("Box Plot")
-        charts["Box Plot"] = fig4
+    # Box plot
+    fig4, ax4 = plt.subplots()
+    sns.boxplot(data=numeric_df, ax=ax4)
+    ax4.set_title("Box Plot")
+    charts["Box Plot"] = fig4
 
-        # Heatmap
-        fig5, ax5 = plt.subplots()
-        sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax5)
-        ax5.set_title("Correlation Heatmap")
-        charts["Heatmap"] = fig5
+    # Heatmap
+    fig5, ax5 = plt.subplots()
+    sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax5)
+    ax5.set_title("Correlation Heatmap")
+    charts["Heatmap"] = fig5
 
-    # Pie chart (based on first categorical column)
+    # Pie chart
     cat_df = df.select_dtypes(include=['object'])
     if not cat_df.empty:
         col = cat_df.columns[0]
         pie_data = df[col].value_counts()
-        if not pie_data.empty:
-            fig6, ax6 = plt.subplots()
-            ax6.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
-            ax6.axis('equal')
-            ax6.set_title(f"Pie Chart of {col}")
-            charts["Pie Chart"] = fig6
+        fig6, ax6 = plt.subplots()
+        ax6.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+        ax6.axis('equal')
+        ax6.set_title(f"Pie Chart of {col}")
+        charts["Pie Chart"] = fig6
 
     return charts
 
@@ -129,7 +141,6 @@ def export_to_ppt(charts, summary):
     slide.shapes.title.text = "Data Analysis Report"
     slide.placeholders[1].text = "Generated via Streamlit"
 
-    # Summary Slide
     if summary:
         bullet_slide_layout = prs.slide_layouts[1]
         slide = prs.slides.add_slide(bullet_slide_layout)
@@ -189,24 +200,24 @@ def main():
             filter_col = st.selectbox("Select column to search/filter", df.columns)
             search_val = st.text_input("Enter search keyword")
             if search_val:
-                filtered_df = df[df[filter_col].astype(str).str.contains(search_val, na=False)]
+                filtered_df = df[df[filter_col].astype(str).str.contains(search_val)]
                 st.dataframe(filtered_df)
             else:
                 filtered_df = df
 
             st.subheader("📈 Chart Builder")
-            charts = generate_charts(df)
-            chart_options = list(charts.keys())
-            selected_chart = st.selectbox("Select chart to view in app (all charts will be in PPT)", ["None"] + chart_options)
+            all_charts = generate_charts(df)
+            chart_options = list(all_charts.keys())
+            selected_chart = st.selectbox("Select charts to view in app (all charts will be in PPT)", ["None"] + chart_options)
 
-            if selected_chart != "None" and selected_chart in charts:
-                st.pyplot(charts[selected_chart])
+            if selected_chart != "None" and selected_chart in all_charts:
+                st.pyplot(all_charts[selected_chart])
 
-            token = "hf_manideep"  # Your actual Hugging Face token
+            token = "hf_manideep"  # Hugging Face token
             summary = summarize_csv(df, token)
 
             if st.button("Export to PPT"):
-                ppt_stream = export_to_ppt(charts, summary)
+                ppt_stream = export_to_ppt(all_charts, summary)
                 st.download_button("Download PPT", ppt_stream, file_name="data_analysis_report.pptx")
 
         except Exception as e:
