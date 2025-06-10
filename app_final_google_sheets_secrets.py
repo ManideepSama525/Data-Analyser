@@ -39,8 +39,8 @@ def connect_to_google_sheets(max_retries=3, delay=2):
                 history_sheet.append_row(["username", "filename", "timestamp"])
 
             return auth_sheet, history_sheet
-        except gspread.exceptions.SpreadsheetNotFound as e:
-            st.error(f"Spreadsheet 'user_database' not found. Please create it and share it with the service account.")
+        except gspread.exceptions.SpreadsheetNotFound:
+            st.error("Spreadsheet 'user_database' not found. Please create it and share it with the service account.")
             st.stop()
         except gspread.exceptions.APIError as e:
             st.error(f"Google Sheets API error: {e}")
@@ -102,16 +102,15 @@ def delete_user(username):
         user_row = None
         for idx, row in enumerate(users):
             if row[0] == username:
-                user_row = idx + 1  # 1-based index for gspread
+                user_row = idx + 1
                 break
         if user_row is None:
             st.error(f"User '{username}' not found.")
             return False
         auth_sheet.delete_rows(user_row)
-        # Also remove the user's upload history
         history = history_sheet.get_all_values()
         rows_to_delete = []
-        for idx, row in enumerate(history[1:], start=2):  # Start from 2 to skip header
+        for idx, row in enumerate(history[1:], start=2):
             if row[0] == username:
                 rows_to_delete.append(idx)
         for row_idx in sorted(rows_to_delete, reverse=True):
@@ -138,8 +137,7 @@ def save_upload_history(username, filename):
 @st.cache_data
 def get_upload_history():
     try:
-        history = history_sheet.get_all_records()
-        return history
+        return history_sheet.get_all_records()
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to fetch upload history: {e}")
         return []
@@ -179,8 +177,6 @@ def generate_charts(df):
         fig1, ax1 = plt.subplots(figsize=(6, 4))
         sns.scatterplot(data=numeric_df, x=numeric_df.columns[0], y=numeric_df.columns[1], ax=ax1)
         ax1.set_title("Scatter Plot")
-        ax1.set_xlabel(numeric_df.columns[0])
-        ax1.set_ylabel(numeric_df.columns[1])
         charts["Scatter Plot"] = fig1
 
     fig2, ax2 = plt.subplots(figsize=(6, 4))
@@ -273,19 +269,17 @@ def main():
                     st.success("User created! Please login.")
         return
 
-    # Admin controls in the sidebar
     st.sidebar.header("⚙️ Admin Panel")
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
+
     if st.session_state.username == ADMIN_USERNAME:
         st.sidebar.subheader("Admin Controls")
-        # Display upload history for admin only
         st.sidebar.subheader("📁 Upload History")
         history = get_upload_history()
         if history:
             st.sidebar.dataframe(pd.DataFrame(history), use_container_width=True)
         else:
             st.sidebar.info("No files have been uploaded yet.")
-        # Delete user feature
         users = get_users()
         user_list = [user['username'] for user in users if user['username'] != ADMIN_USERNAME]
         if user_list:
@@ -295,7 +289,6 @@ def main():
                 st.rerun()
         else:
             st.sidebar.info("No users available to delete.")
-        # Clear upload history feature
         if st.sidebar.button("Clear Upload History"):
             clear_upload_history()
             st.rerun()
@@ -304,6 +297,8 @@ def main():
         st.session_state.logged_in = False
         st.rerun()
 
+    # 🔽 Added title here before file uploader
+    st.title("📊 Data Analyzer")
     uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
         try:
@@ -357,7 +352,7 @@ def main():
                         "Download PPT",
                         ppt_stream,
                         file_name="data_analysis_report.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        mime="application/vnd.openxmlformats-officedocument.presentation.presentation"
                     )
 
         except pd.errors.ParserError:
