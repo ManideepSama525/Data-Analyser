@@ -20,8 +20,7 @@ st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 # ==================== GOOGLE SHEETS SETUP ====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-with open("streamlit-user-auth-bafb09360eed.json") as f:
-    creds_dict = json.load(f)
+creds_dict = st.secrets["google_sheets"]
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
