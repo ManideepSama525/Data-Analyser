@@ -17,14 +17,6 @@ st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_st
 st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 
 # ==================== GOOGLE SHEETS SETUP ====================
-# Note: Ensure the following setup in Google Sheets:
-# 1. Create a spreadsheet named exactly "user_database".
-# 2. Share it with the service account email: streamlit-user-auth@streamlit-user-auth.iam.gserviceaccount.com (Editor access).
-# 3. Create two worksheets: "users" (columns: username, password) and "upload_history" (columns: username, filename, timestamp).
-# 4. Add an admin user manually to the "users" worksheet:
-#    - Run: import bcrypt; hashed = bcrypt.hashpw("your_password".encode(), bcrypt.gensalt()).decode()
-#    - Add row: username: manideep, password: <hashed_password>
-
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
 def connect_to_google_sheets(max_retries=3, delay=2):
@@ -69,7 +61,7 @@ def connect_to_google_sheets(max_retries=3, delay=2):
 
 auth_sheet, history_sheet = connect_to_google_sheets()
 
-ADMIN_USERNAME = "manideep"
+ADMIN_USERNAME = "admin"
 
 # ==================== AUTH FUNCTIONS ====================
 @st.cache_data
@@ -122,6 +114,14 @@ def get_upload_history():
     except gspread.exceptions.APIError as e:
         st.error(f"Failed to fetch upload history: {e}")
         return []
+
+def clear_upload_history():
+    try:
+        history_sheet.clear()
+        history_sheet.append_row(["username", "filename", "timestamp"])
+        st.success("Upload history cleared successfully.")
+    except gspread.exceptions.APIError as e:
+        st.error(f"Failed to clear upload history: {e}")
 
 # ==================== SUMMARIZATION ====================
 def summarize_csv(df, token):
@@ -252,8 +252,15 @@ def main():
     else:
         st.info("No files have been uploaded yet.")
 
+    # Admin controls in the sidebar
     st.sidebar.header("⚙️ Admin Panel")
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
+    if st.session_state.username == ADMIN_USERNAME:
+        st.sidebar.subheader("Admin Controls")
+        if st.sidebar.button("Clear Upload History"):
+            clear_upload_history()
+            st.rerun()
+
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.rerun()
