@@ -8,173 +8,123 @@ import matplotlib.pyplot as plt
 from pptx import Presentation
 from pptx.util import Inches
 import io
-import datetime
 import os
-import uuid
+import datetime
 
-# ------------------------------ #
-# 🎨 Visual Theme
-# ------------------------------ #
+# -----------------------------------
+# 🎨 Custom Theme
+# -----------------------------------
 st.markdown("""
 <style>
-body { background-color: #0e1117; color: #ffffff; }
-h1, h2, h3, h4 { color: #61dafb; }
-.stApp { font-family: 'Segoe UI', sans-serif; padding: 1rem; }
-.stButton>button, .stDownloadButton>button {
-    background-color: #00b4d8; color: white; border-radius: 8px;
-    height: 3em; font-weight: bold;
-}
-.stSelectbox>div>div { background-color: #1a1a1a !important; color: white !important; }
-.css-1d391kg, .css-18ni7ap, .css-1v3fvcr { background-color: #1a1a1a; }
+    body { background-color: #0e1117; color: #ffffff; }
+    h1, h2, h3, h4 { color: #61dafb; }
+    .stApp { font-family: 'Segoe UI', sans-serif; padding: 1rem; }
+    .stButton>button, .stDownloadButton>button {
+        background-color: #00b4d8; color: white; border-radius: 8px;
+        height: 3em; font-weight: bold;
+    }
+    .stSelectbox>div>div { background-color: #1a1a1a !important; color: white !important; }
+    .css-1d391kg, .css-18ni7ap, .css-1v3fvcr { background-color: #1a1a1a; }
 </style>
 """, unsafe_allow_html=True)
 
-# ------------------------------ #
+# -----------------------------------
 # 🔐 Google Sheets Auth
-# ------------------------------ #
+# -----------------------------------
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds_dict = st.secrets["google_sheets"]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
+client = gspread.authorize(creds)
+
+# Sheets
+workbook = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g")
+sheet = workbook.sheet1
 try:
-    creds_dict = st.secrets["google_sheets"]
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
-    client = gspread.authorize(creds)
-    workbook = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g")
-    user_sheet = workbook.sheet1
-    try:
-        upload_sheet = workbook.worksheet("upload_history")
-    except:
-        upload_sheet = workbook.add_worksheet(title="upload_history", rows="1000", cols="3")
-        upload_sheet.append_row(["username", "filename", "timestamp"])
-except Exception as e:
-    st.error(f"Failed to connect to Google Sheets: {e}")
-    st.stop()
+    upload_sheet = workbook.worksheet("upload_history")
+except:
+    upload_sheet = workbook.add_worksheet(title="upload_history", rows="1000", cols="3")
+    upload_sheet.append_row(["username", "filename", "timestamp"])
 
-# ------------------------------ #
-# 🔄 Session State Initialization
-# ------------------------------ #
-def initialize_session_state():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-    if "username" not in st.session_state:
-        st.session_state.username = ""
-    if "uploaded_data" not in st.session_state:
-        st.session_state.uploaded_data = {}
+# Session State Initialization
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
 
-initialize_session_state()
-
-# ------------------------------ #
-# 🔧 Utility Functions
-# ------------------------------ #
+# -----------------------
+# 🔐 Auth & Admin Helpers
+# -----------------------
 def get_users():
-    try:
-        return {row["username"]: row["password_hash"] for row in user_sheet.get_all_records()}
-    except Exception as e:
-        st.error(f"Error fetching users: {e}")
-        return {}
+    return {row["username"]: row["password_hash"] for row in sheet.get_all_records()}
 
 def add_user(username, password):
-    try:
-        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        user_sheet.append_row([username, hashed])
-        return True
-    except Exception as e:
-        st.error(f"Error adding user: {e}")
-        return False
+    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    sheet.append_row([username, hashed])
 
 def delete_user(username):
-    try:
-        data = user_sheet.get_all_records()
-        user_sheet.clear()
-        user_sheet.append_row(["username", "password_hash"])
-        for row in data:
-            if row["username"] != username:
-                user_sheet.append_row([row["username"], row["password_hash"]])
-        return True
-    except Exception as e:
-        st.error(f"Error deleting user: {e}")
-        return False
+    users = sheet.get_all_records()
+    sheet.clear()
+    sheet.append_row(["username", "password_hash"])
+    for row in users:
+        if row["username"] != username:
+            sheet.append_row([row["username"], row["password_hash"]])
 
 def reset_password(username, new_password):
-    try:
-        hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-        data = user_sheet.get_all_records()
-        user_sheet.clear()
-        user_sheet.append_row(["username", "password_hash"])
-        for row in data:
-            if row["username"] == username:
-                user_sheet.append_row([username, hashed])
-            else:
-                user_sheet.append_row([row["username"], row["password_hash"]])
-        return True
-    except Exception as e:
-        st.error(f"Error resetting password: {e}")
-        return False
+    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+    users = sheet.get_all_records()
+    sheet.clear()
+    sheet.append_row(["username", "password_hash"])
+    for row in users:
+        if row["username"] == username:
+            sheet.append_row([username, hashed])
+        else:
+            sheet.append_row([row["username"], row["password_hash"]])
 
-def log_upload(username, filename, content):
-    try:
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        upload_sheet.append_row([username, filename, timestamp])
-        if username not in st.session_state.uploaded_data:
-            st.session_state.uploaded_data[username] = {}
-        st.session_state.uploaded_data[username][filename] = content
-    except Exception as e:
-        st.error(f"Error logging upload: {e}")
+def log_upload(username, filename, df):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    upload_sheet.append_row([username, filename, timestamp])
+    os.makedirs("uploads", exist_ok=True)
+    df.to_csv(f"uploads/{username}_{filename}", index=False)
 
 def fetch_upload_history():
-    try:
-        return pd.DataFrame(upload_sheet.get_all_records())
-    except Exception as e:
-        st.error(f"Error fetching upload history: {e}")
-        return pd.DataFrame()
+    return pd.DataFrame(upload_sheet.get_all_records())
 
-def fig_to_bytes(fig):
+def fig_to_png(fig):
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight")
     buf.seek(0)
     return buf
 
-def generate_ppt(df, chart_images):
-    try:
-        ppt = Presentation()
-        ppt.slides.add_slide(ppt.slide_layouts[0]).shapes.title.text = "CSV Report"
+def generate_ppt_from_df(df, chart_img, chart_type):
+    prs = Presentation()
+    prs.slides.add_slide(prs.slide_layouts[0]).shapes.title.text = "CSV Data Report"
 
-        slide = ppt.slides.add_slide(ppt.slide_layouts[1])
-        slide.shapes.title.text = "Data Summary"
-        textbox = slide.placeholders[1]
-        textbox.text = df.describe(include='all').round(2).to_string()
+    slide = prs.slides.add_slide(prs.slide_layouts[1])
+    slide.shapes.title.text = "Summary Statistics"
+    textbox = slide.placeholders[1]
+    textbox.text = df.describe(include='all').round(2).to_string()
 
-        sample = df.head(10)
-        slide = ppt.slides.add_slide(ppt.slide_layouts[5])
-        slide.shapes.title.text = "Sample Data"
-        rows, cols = sample.shape
-        table = slide.shapes.add_table(rows + 1, cols, Inches(0.5), Inches(1.5), Inches(9), Inches(4)).table
-        for i, col in enumerate(sample.columns):
-            table.cell(0, i).text = col
-        for r in range(rows):
-            for c in range(cols):
-                table.cell(r + 1, c).text = str(sample.iloc[r, c])
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = "Data Sample"
+    table = slide.shapes.add_table(min(11, len(df)+1), len(df.columns), Inches(0.5), Inches(1.5), Inches(9), Inches(4)).table
+    for i, col in enumerate(df.columns):
+        table.cell(0, i).text = str(col)
+    for r in range(min(10, len(df))):
+        for c in range(len(df.columns)):
+            table.cell(r+1, c).text = str(df.iloc[r, c])
 
-        for name, img_bytes in chart_images:
-            slide = ppt.slides.add_slide(ppt.slide_layouts[5])
-            slide.shapes.title.text = name
-            slide.shapes.add_picture(img_bytes, Inches(1), Inches(1.5), Inches(6), Inches(4))
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    slide.shapes.title.text = f"{chart_type} Chart"
+    slide.shapes.add_picture(chart_img, Inches(1), Inches(1.5), Inches(6), Inches(4))
 
-        buf = io.BytesIO()
-        ppt.save(buf)
-        buf.seek(0)
-        return buf
-    except Exception as e:
-        st.error(f"Error generating PPT: {e}")
-        return None
+    ppt_io = io.BytesIO()
+    prs.save(ppt_io)
+    ppt_io.seek(0)
+    return ppt_io
 
-def clear_session():
-    st.session_state.logged_in = False
-    st.session_state.username = ""
-    st.session_state.uploaded_data = {}
-    st.success("Session data cleared.")
-
-# ------------------------------ #
-# 👤 Login / Register
-# ------------------------------ #
+# --------------------------
+# 👤 Login / Signup Interface
+# --------------------------
 if not st.session_state.logged_in:
     st.title("🔐 Secure Data Analyzer")
     login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
@@ -201,119 +151,105 @@ if not st.session_state.logged_in:
             elif not new_user or not new_pass:
                 st.warning("Fill all fields.")
             else:
-                if add_user(new_user, new_pass):
-                    st.success("Account created!")
-                    st.rerun()
+                add_user(new_user, new_pass)
+                st.success("Account created. Please log in.")
+                st.rerun()
 
-# ------------------------------ #
-# 🛠 Admin Panel
-# ------------------------------ #
+# --------------------------
+# ⚙️ Admin Panel Sidebar
+# --------------------------
 if st.session_state.logged_in:
-    st.sidebar.title("⚙️ Admin Panel")
-    st.sidebar.write(f"Logged in as: `{st.session_state.username}`")
+    st.sidebar.success(f"Logged in as: {st.session_state.username}")
     if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.session_state.username = ""
+        st.session_state.clear()
         st.rerun()
 
     if st.session_state.username == "admin":
+        st.sidebar.title("⚙️ Admin Panel")
         users = get_users()
 
         st.sidebar.markdown("### 🔐 Reset Password")
-        user = st.sidebar.selectbox("Select user", list(users.keys()))
-        new_pw = st.sidebar.text_input("New password", type="password")
+        user_to_reset = st.sidebar.selectbox("Reset user", list(users.keys()))
+        new_pw = st.sidebar.text_input("New Password", type="password")
         if st.sidebar.button("Reset Password"):
-            if reset_password(user, new_pw):
-                st.sidebar.success("Password reset.")
+            reset_password(user_to_reset, new_pw)
+            st.sidebar.success("Password reset.")
 
         st.sidebar.markdown("### 🗑️ Delete User")
-        del_user = st.sidebar.selectbox("Delete user", [u for u in users if u != "admin"])
+        user_to_delete = st.sidebar.selectbox("Delete user", [u for u in users if u != "admin"])
         if st.sidebar.button("Delete User"):
-            if delete_user(del_user):
-                st.sidebar.success("User deleted.")
+            delete_user(user_to_delete)
+            st.sidebar.success("User deleted.")
 
         st.sidebar.markdown("### 📋 Upload History")
-        history_df = fetch_upload_history()
-        st.sidebar.dataframe(history_df)
+        history = fetch_upload_history()
+        st.sidebar.dataframe(history)
 
-        st.sidebar.markdown("### 📦 Download Uploaded CSVs")
-        if st.session_state.uploaded_data:
-            for user in st.session_state.uploaded_data:
-                for filename, content in st.session_state.uploaded_data[user].items():
-                    st.sidebar.download_button(f"{user}: {filename}", data=content, file_name=filename)
-        else:
-            st.sidebar.info("No uploaded files available.")
+        st.sidebar.markdown("### ⬇️ Download Uploaded CSVs")
+        for fname in os.listdir("uploads"):
+            with open(f"uploads/{fname}", "rb") as f:
+                st.sidebar.download_button(f"Download {fname}", f, file_name=fname)
 
-        st.sidebar.markdown("### 🧹 Clear Session Data")
-        if st.sidebar.button("Clear Session"):
-            clear_session()
-            st.rerun()
-
-# ------------------------------ #
-# 📊 Main CSV Interface
-# ------------------------------ #
+# --------------------------
+# 📊 CSV Upload & Analysis
+# --------------------------
 if st.session_state.logged_in:
     st.title("📊 Upload & Analyze CSV")
-    uploaded = st.file_uploader("Upload CSV", type="csv")
-    if uploaded:
-        try:
-            df = pd.read_csv(uploaded)
-            log_upload(st.session_state.username, uploaded.name, uploaded.getvalue())
+    uploaded_file = st.file_uploader("Upload your CSV", type="csv")
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        log_upload(st.session_state.username, uploaded_file.name, df)
 
-            st.subheader("📄 Data Preview")
-            st.dataframe(df)
+        st.subheader(f"📄 Preview: `{uploaded_file.name}`")
+        st.dataframe(df)
 
-            st.subheader("🔍 Filter Data")
-            filter_col = st.selectbox("Column to filter", df.columns)
-            if df[filter_col].dtype == "object":
-                keyword = st.text_input("Search text")
-                if keyword:
-                    df = df[df[filter_col].str.contains(keyword, case=False, na=False)]
-            else:
-                range_vals = st.slider("Select range", float(df[filter_col].min()), float(df[filter_col].max()),
-                                       (float(df[filter_col].min()), float(df[filter_col].max())))
-                df = df[df[filter_col].between(*range_vals)]
+        st.subheader("🔍 Filter Data")
+        filter_col = st.selectbox("Column to filter", df.columns)
+        if df[filter_col].dtype == "object":
+            keyword = st.text_input("Search keyword")
+            if keyword:
+                df = df[df[filter_col].str.contains(keyword, case=False, na=False)]
+        else:
+            min_val = float(df[filter_col].min())
+            max_val = float(df[filter_col].max())
+            selected = st.slider("Select range", min_val, max_val, (min_val, max_val))
+            df = df[df[filter_col].between(*selected)]
 
-            st.dataframe(df)
+        st.dataframe(df)
 
-            st.subheader("📈 Chart Builder")
-            chart_type = st.selectbox("Chart type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
-            num_cols = df.select_dtypes(include="number").columns.tolist()
-            cat_cols = df.select_dtypes(include="object").columns.tolist()
-            fig, ax = plt.subplots()
-            chart_images = []
+        st.subheader("📈 Chart")
+        chart_type = st.selectbox("Chart type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
+        num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+        cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
+        fig, ax = plt.subplots()
 
-            if chart_type == "Scatter" and len(num_cols) >= 2:
-                x = st.selectbox("X", num_cols)
-                y = st.selectbox("Y", num_cols, index=1)
-                sns.scatterplot(data=df, x=x, y=y, ax=ax)
-            elif chart_type == "Line" and len(num_cols) >= 2:
-                x = st.selectbox("X", num_cols)
-                y = st.selectbox("Y", num_cols, index=1)
-                sns.lineplot(data=df, x=x, y=y, ax=ax)
-            elif chart_type == "Histogram" and num_cols:
-                col = st.selectbox("Column", num_cols)
-                sns.histplot(df[col], kde=True, ax=ax)
-            elif chart_type == "Box" and num_cols:
-                col = st.selectbox("Column", num_cols)
-                sns.boxplot(y=df[col], ax=ax)
-            elif chart_type == "Heatmap" and len(num_cols) >= 2:
-                sns.heatmap(df[num_cols].corr(), annot=True, ax=ax, cmap="coolwarm")
-            elif chart_type == "Pie" and cat_cols:
-                col = st.selectbox("Column", cat_cols)
-                pie_data = df[col].value_counts()
-                plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%")
-                plt.axis("equal")
+        if chart_type == "Scatter" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols)
+            y = st.selectbox("Y-axis", num_cols, index=1)
+            sns.scatterplot(data=df, x=x, y=y, ax=ax)
+        elif chart_type == "Line" and len(num_cols) >= 2:
+            x = st.selectbox("X-axis", num_cols)
+            y = st.selectbox("Y-axis", num_cols, index=1)
+            sns.lineplot(data=df, x=x, y=y, ax=ax)
+        elif chart_type == "Histogram" and num_cols:
+            col = st.selectbox("Column", num_cols)
+            sns.histplot(df[col], kde=True, ax=ax)
+        elif chart_type == "Box" and num_cols:
+            col = st.selectbox("Column", num_cols)
+            sns.boxplot(y=df[col], ax=ax)
+        elif chart_type == "Heatmap" and len(num_cols) >= 2:
+            sns.heatmap(df[num_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        elif chart_type == "Pie" and cat_cols:
+            col = st.selectbox("Category column", cat_cols)
+            pie_data = df[col].value_counts()
+            plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%")
+            plt.axis("equal")
 
-            st.pyplot(fig)
-            img_bytes = fig_to_bytes(fig)
-            chart_images.append((chart_type, img_bytes))
+        st.pyplot(fig)
 
-            st.download_button("📥 Download Plot as PNG", data=img_bytes, file_name="plot.png", mime="image/png")
+        chart_buf = fig_to_png(fig)
+        st.download_button("📥 Download Plot as PNG", data=chart_buf, file_name="plot.png", mime="image/png")
 
-            if st.button("📤 Download PPT Report"):
-                pptx_buf = generate_ppt(df, chart_images)
-                if pptx_buf:
-                    st.download_button("📥 Download PowerPoint", data=pptx_buf, file_name="report.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
-        except Exception as e:
-            st.error(f"Error processing CSV: {e}")
+        ppt_buf = generate_ppt_from_df(df, chart_buf, chart_type)
+        st.download_button("📥 Download PPT Report", data=ppt_buf,
+                           file_name="report.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
