@@ -8,3 +8,5 @@ requests
 gspread
 bcrypt
 google-auth
+oauth2client
+toml
