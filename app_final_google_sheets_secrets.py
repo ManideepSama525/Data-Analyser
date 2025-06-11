@@ -23,7 +23,7 @@ creds_dict = dict(st.secrets["google_sheets"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
-auth_sheet = client.open("user_database").worksheet("users")
+auth_sheet = client.open("user_database").worksheet("user_database")
 history_sheet = client.open("user_database").worksheet("upload_history")
 
 ADMIN_USERNAME = "admin"
@@ -42,6 +42,20 @@ def find_user(username):
 def add_user(username, password):
     hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     auth_sheet.append_row([username, hashed_pw])
+
+def delete_user(username_to_delete):
+    try:
+        data = auth_sheet.get_all_values()
+        headers = data[0]
+        remaining = [row for row in data if row[0] != username_to_delete and row[0] != 'username']
+        auth_sheet.clear()
+        auth_sheet.append_row(headers)
+        for row in remaining[1:]:
+            auth_sheet.append_row(row)
+        return True
+    except Exception as e:
+        st.error(f"Error deleting user: {e}")
+        return False
 
 def authenticate(username, password):
     user = find_user(username)
@@ -158,7 +172,7 @@ def main():
             if authenticate(username, password):
                 st.session_state.logged_in = True
                 st.session_state.username = username
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid username or password")
         return
@@ -167,7 +181,7 @@ def main():
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
-        st.rerun()
+        st.experimental_rerun()
 
     uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
@@ -204,6 +218,14 @@ def main():
             st.error(f"Error processing CSV: {e}")
 
     if st.session_state.username == ADMIN_USERNAME:
+        st.subheader("🧑‍💻 Delete a User")
+        users = get_users()
+        usernames = [u['username'] for u in users if u['username'] != ADMIN_USERNAME]
+        user_to_delete = st.selectbox("Select a user to delete", usernames)
+        if st.button("Delete User"):
+            if delete_user(user_to_delete):
+                st.success(f"User '{user_to_delete}' deleted.")
+
         st.subheader("📁 Upload History (Admin Only)")
         history = get_upload_history()
         st.dataframe(pd.DataFrame(history))
