@@ -23,7 +23,7 @@ creds_dict = dict(st.secrets["google_sheets"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
-auth_sheet = client.open("user_database").worksheet("users")
+auth_sheet = client.open("user_database").worksheet("user_database")
 history_sheet = client.open("user_database").worksheet("upload_history")
 
 ADMIN_USERNAME = "admin"
@@ -143,7 +143,7 @@ def export_to_ppt(charts, summary):
         content = slide.placeholders[1].text_frame
         for sentence in summary.split('.'):
             if sentence.strip():
-                content.add_paragraph(sentence.strip())
+                content.add_paragraph().text = sentence.strip()
 
     for title, fig in charts.items():
         slide = prs.slides.add_slide(prs.slide_layouts[5])
@@ -172,7 +172,7 @@ def main():
             if authenticate(username, password):
                 st.session_state.logged_in = True
                 st.session_state.username = username
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid username or password")
         return
@@ -181,7 +181,7 @@ def main():
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
-        st.rerun()
+        st.experimental_rerun()
 
     uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
