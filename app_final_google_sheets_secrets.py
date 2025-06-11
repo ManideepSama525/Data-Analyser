@@ -19,16 +19,14 @@ st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 
 # ==================== GOOGLE SHEETS SETUP ====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-
 creds_dict = dict(st.secrets["google_sheets"])
-
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
 auth_sheet = client.open("user_database").worksheet("users")
 history_sheet = client.open("user_database").worksheet("upload_history")
 
-ADMIN_USERNAME = "manideep"
+ADMIN_USERNAME = "admin"
 
 # ==================== AUTH FUNCTIONS ====================
 def get_users():
@@ -78,38 +76,32 @@ def generate_charts(df):
     if numeric_df.shape[1] < 1:
         return charts
 
-    # Scatter plot
     if numeric_df.shape[1] >= 2:
         fig1, ax1 = plt.subplots()
         sns.scatterplot(data=numeric_df, x=numeric_df.columns[0], y=numeric_df.columns[1], ax=ax1)
         ax1.set_title("Scatter Plot")
         charts["Scatter Plot"] = fig1
 
-    # Line plot
     fig2, ax2 = plt.subplots()
     numeric_df.plot(ax=ax2)
     ax2.set_title("Line Plot")
     charts["Line Plot"] = fig2
 
-    # Histogram
     fig3, ax3 = plt.subplots()
     numeric_df.hist(ax=ax3)
     plt.tight_layout()
     charts["Histogram"] = fig3
 
-    # Box plot
     fig4, ax4 = plt.subplots()
     sns.boxplot(data=numeric_df, ax=ax4)
     ax4.set_title("Box Plot")
     charts["Box Plot"] = fig4
 
-    # Heatmap
     fig5, ax5 = plt.subplots()
     sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax5)
     ax5.set_title("Correlation Heatmap")
     charts["Heatmap"] = fig5
 
-    # Pie chart
     cat_df = df.select_dtypes(include=['object'])
     if not cat_df.empty:
         col = cat_df.columns[0]
@@ -166,7 +158,7 @@ def main():
             if authenticate(username, password):
                 st.session_state.logged_in = True
                 st.session_state.username = username
-                st.rerun()
+                st.experimental_rerun()
             else:
                 st.error("Invalid username or password")
         return
@@ -182,7 +174,6 @@ def main():
         try:
             df = pd.read_csv(uploaded_file)
             st.dataframe(df)
-
             save_upload_history(st.session_state.username, uploaded_file.name)
 
             st.subheader("🔍 Filter Data")
@@ -198,15 +189,11 @@ def main():
             all_charts = generate_charts(df)
             chart_options = list(all_charts.keys())
             selected_chart = st.selectbox("Select chart to view in app (all charts will be in PPT)", ["None"] + chart_options)
-
             if selected_chart != "None" and selected_chart in all_charts:
                 st.pyplot(all_charts[selected_chart])
-
-            
-                            # Always include all charts in PPT regardless of selected_chart
             charts_for_ppt = all_charts
 
-            token = "hf_manideep"  # Hugging Face token
+            token = "hf_manideep"
             summary = summarize_csv(df, token)
 
             if st.button("Export to PPT"):
@@ -217,7 +204,7 @@ def main():
             st.error(f"Error processing CSV: {e}")
 
     if st.session_state.username == ADMIN_USERNAME:
-        st.subheader("📁 Upload History")
+        st.subheader("📁 Upload History (Admin Only)")
         history = get_upload_history()
         st.dataframe(pd.DataFrame(history))
 
