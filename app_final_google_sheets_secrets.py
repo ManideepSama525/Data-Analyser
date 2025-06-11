@@ -3,253 +3,221 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import bcrypt
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
+import seaborn as sns
 from pptx import Presentation
 from pptx.util import Inches
 import io
-import os
 import datetime
+import base64
+import requests
+import json
 
-# -----------------------------------
-# 🎨 Custom Theme
-# -----------------------------------
-st.markdown("""
-<style>
-    body { background-color: #0e1117; color: #ffffff; }
-    h1, h2, h3, h4 { color: #61dafb; }
-    .stApp { font-family: 'Segoe UI', sans-serif; padding: 1rem; }
-    .stButton>button, .stDownloadButton>button {
-        background-color: #00b4d8; color: white; border-radius: 8px;
-        height: 3em; font-weight: bold;
-    }
-    .stSelectbox>div>div { background-color: #1a1a1a !important; color: white !important; }
-    .css-1d391kg, .css-18ni7ap, .css-1v3fvcr { background-color: #1a1a1a; }
-</style>
-""", unsafe_allow_html=True)
+# ==================== CONFIG ====================
+st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_state="expanded")
+st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 
-# -----------------------------------
-# 🔐 Google Sheets Auth
-# -----------------------------------
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+# ==================== GOOGLE SHEETS SETUP ====================
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+
 creds_dict = st.secrets["google_sheets"]
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, SCOPE)
+
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
-# Sheets
-workbook = client.open_by_key("1DFQst-DQMplGeI6OxfpSM1K_48rDJpT48Yy8Ur79d8g")
-sheet = workbook.sheet1
-try:
-    upload_sheet = workbook.worksheet("upload_history")
-except:
-    upload_sheet = workbook.add_worksheet(title="upload_history", rows="1000", cols="3")
-    upload_sheet.append_row(["username", "filename", "timestamp"])
+auth_sheet = client.open("streamlit_user_auth").worksheet("users")
+history_sheet = client.open("streamlit_user_auth").worksheet("upload_history")
 
-# Session State Initialization
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "username" not in st.session_state:
-    st.session_state.username = ""
+ADMIN_USERNAME = "manideep"
 
-# -----------------------
-# 🔐 Auth & Admin Helpers
-# -----------------------
+# ==================== AUTH FUNCTIONS ====================
 def get_users():
-    return {row["username"]: row["password_hash"] for row in sheet.get_all_records()}
+    return auth_sheet.get_all_records()
+
+def find_user(username):
+    users = get_users()
+    for user in users:
+        if user['username'] == username:
+            return user
+    return None
 
 def add_user(username, password):
-    hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    sheet.append_row([username, hashed])
+    hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    auth_sheet.append_row([username, hashed_pw])
 
-def delete_user(username):
-    users = sheet.get_all_records()
-    sheet.clear()
-    sheet.append_row(["username", "password_hash"])
-    for row in users:
-        if row["username"] != username:
-            sheet.append_row([row["username"], row["password_hash"]])
+def authenticate(username, password):
+    user = find_user(username)
+    if user and bcrypt.checkpw(password.encode(), user['password'].encode()):
+        return True
+    return False
 
-def reset_password(username, new_password):
-    hashed = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-    users = sheet.get_all_records()
-    sheet.clear()
-    sheet.append_row(["username", "password_hash"])
-    for row in users:
-        if row["username"] == username:
-            sheet.append_row([username, hashed])
-        else:
-            sheet.append_row([row["username"], row["password_hash"]])
-
-def log_upload(username, filename, df):
+def save_upload_history(username, filename):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    upload_sheet.append_row([username, filename, timestamp])
-    os.makedirs("uploads", exist_ok=True)
-    df.to_csv(f"uploads/{username}_{filename}", index=False)
+    history_sheet.append_row([username, filename, timestamp])
 
-def fetch_upload_history():
-    return pd.DataFrame(upload_sheet.get_all_records())
+def get_upload_history():
+    return history_sheet.get_all_records()
 
-def fig_to_png(fig):
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight")
-    buf.seek(0)
-    return buf
+# ==================== SUMMARIZATION ====================
+def summarize_csv(df, token):
+    text = df.to_csv(index=False)
+    payload = {"inputs": text}
+    headers = {"Authorization": f"Bearer {token}"}
+    api_url = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn"
+    response = requests.post(api_url, headers=headers, json=payload)
+    try:
+        return response.json()[0]['summary_text']
+    except:
+        return "Summary could not be generated."
 
-def generate_ppt_from_df(df, chart_img, chart_type):
+# ==================== CHART GENERATION ====================
+def generate_charts(df):
+    charts = {}
+    numeric_df = df.select_dtypes(include=['number']).dropna(axis=1, how='all')
+
+    if numeric_df.shape[1] < 1:
+        return charts
+
+    # Scatter plot
+    if numeric_df.shape[1] >= 2:
+        fig1, ax1 = plt.subplots()
+        sns.scatterplot(data=numeric_df, x=numeric_df.columns[0], y=numeric_df.columns[1], ax=ax1)
+        ax1.set_title("Scatter Plot")
+        charts["Scatter Plot"] = fig1
+
+    # Line plot
+    fig2, ax2 = plt.subplots()
+    numeric_df.plot(ax=ax2)
+    ax2.set_title("Line Plot")
+    charts["Line Plot"] = fig2
+
+    # Histogram
+    fig3, ax3 = plt.subplots()
+    numeric_df.hist(ax=ax3)
+    plt.tight_layout()
+    charts["Histogram"] = fig3
+
+    # Box plot
+    fig4, ax4 = plt.subplots()
+    sns.boxplot(data=numeric_df, ax=ax4)
+    ax4.set_title("Box Plot")
+    charts["Box Plot"] = fig4
+
+    # Heatmap
+    fig5, ax5 = plt.subplots()
+    sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax5)
+    ax5.set_title("Correlation Heatmap")
+    charts["Heatmap"] = fig5
+
+    # Pie chart
+    cat_df = df.select_dtypes(include=['object'])
+    if not cat_df.empty:
+        col = cat_df.columns[0]
+        pie_data = df[col].value_counts()
+        fig6, ax6 = plt.subplots()
+        ax6.pie(pie_data, labels=pie_data.index, autopct='%1.1f%%', startangle=90)
+        ax6.axis('equal')
+        ax6.set_title(f"Pie Chart of {col}")
+        charts["Pie Chart"] = fig6
+
+    return charts
+
+# ==================== PPT EXPORT ====================
+def export_to_ppt(charts, summary):
     prs = Presentation()
-    prs.slides.add_slide(prs.slide_layouts[0]).shapes.title.text = "CSV Data Report"
+    title_slide_layout = prs.slide_layouts[0]
+    slide = prs.slides.add_slide(title_slide_layout)
+    slide.shapes.title.text = "Data Analysis Report"
+    slide.placeholders[1].text = "Generated via Streamlit"
 
-    slide = prs.slides.add_slide(prs.slide_layouts[1])
-    slide.shapes.title.text = "Summary Statistics"
-    textbox = slide.placeholders[1]
-    textbox.text = df.describe(include='all').round(2).to_string()
+    if summary:
+        bullet_slide_layout = prs.slide_layouts[1]
+        slide = prs.slides.add_slide(bullet_slide_layout)
+        slide.shapes.title.text = "CSV Summary"
+        content = slide.placeholders[1].text_frame
+        for sentence in summary.split('.'):
+            if sentence.strip():
+                content.add_paragraph(sentence.strip())
 
-    slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = "Data Sample"
-    table = slide.shapes.add_table(min(11, len(df)+1), len(df.columns), Inches(0.5), Inches(1.5), Inches(9), Inches(4)).table
-    for i, col in enumerate(df.columns):
-        table.cell(0, i).text = str(col)
-    for r in range(min(10, len(df))):
-        for c in range(len(df.columns)):
-            table.cell(r+1, c).text = str(df.iloc[r, c])
+    for title, fig in charts.items():
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        slide.shapes.title.text = title
+        img_stream = io.BytesIO()
+        fig.savefig(img_stream, format='png')
+        img_stream.seek(0)
+        slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(8))
 
-    slide = prs.slides.add_slide(prs.slide_layouts[5])
-    slide.shapes.title.text = f"{chart_type} Chart"
-    slide.shapes.add_picture(chart_img, Inches(1), Inches(1.5), Inches(6), Inches(4))
+    ppt_stream = io.BytesIO()
+    prs.save(ppt_stream)
+    ppt_stream.seek(0)
+    return ppt_stream
 
-    ppt_io = io.BytesIO()
-    prs.save(ppt_io)
-    ppt_io.seek(0)
-    return ppt_io
+# ==================== MAIN APP ====================
+def main():
+    if 'logged_in' not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.username = ""
 
-# --------------------------
-# 👤 Login / Signup Interface
-# --------------------------
-if not st.session_state.logged_in:
-    st.title("🔐 Secure Data Analyzer")
-    login_tab, signup_tab = st.tabs(["Login", "Sign Up"])
-
-    with login_tab:
+    if not st.session_state.logged_in:
+        st.title("🔐 Login")
         username = st.text_input("Username")
         password = st.text_input("Password", type="password")
         if st.button("Login"):
-            users = get_users()
-            if username in users and bcrypt.checkpw(password.encode(), users[username].encode()):
+            if authenticate(username, password):
                 st.session_state.logged_in = True
                 st.session_state.username = username
-                st.rerun()
+                st.experimental_rerun()
             else:
-                st.error("Invalid credentials.")
+                st.error("Invalid username or password")
+        return
 
-    with signup_tab:
-        new_user = st.text_input("New Username")
-        new_pass = st.text_input("New Password", type="password")
-        if st.button("Register"):
-            users = get_users()
-            if new_user in users:
-                st.warning("Username exists.")
-            elif not new_user or not new_pass:
-                st.warning("Fill all fields.")
-            else:
-                add_user(new_user, new_pass)
-                st.success("Account created. Please log in.")
-                st.rerun()
-
-# --------------------------
-# ⚙️ Admin Panel Sidebar
-# --------------------------
-if st.session_state.logged_in:
-    st.sidebar.success(f"Logged in as: {st.session_state.username}")
+    st.sidebar.header("⚙️ Admin Panel")
+    st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.sidebar.button("Logout"):
-        st.session_state.clear()
-        st.rerun()
+        st.session_state.logged_in = False
+        st.experimental_rerun()
 
-    if st.session_state.username == "admin":
-        st.sidebar.title("⚙️ Admin Panel")
-        users = get_users()
-
-        st.sidebar.markdown("### 🔐 Reset Password")
-        user_to_reset = st.sidebar.selectbox("Reset user", list(users.keys()))
-        new_pw = st.sidebar.text_input("New Password", type="password")
-        if st.sidebar.button("Reset Password"):
-            reset_password(user_to_reset, new_pw)
-            st.sidebar.success("Password reset.")
-
-        st.sidebar.markdown("### 🗑️ Delete User")
-        user_to_delete = st.sidebar.selectbox("Delete user", [u for u in users if u != "admin"])
-        if st.sidebar.button("Delete User"):
-            delete_user(user_to_delete)
-            st.sidebar.success("User deleted.")
-
-        st.sidebar.markdown("### 📋 Upload History")
-        history = fetch_upload_history()
-        st.sidebar.dataframe(history)
-
-        st.sidebar.markdown("### ⬇️ Download Uploaded CSVs")
-        for fname in os.listdir("uploads"):
-            with open(f"uploads/{fname}", "rb") as f:
-                st.sidebar.download_button(f"Download {fname}", f, file_name=fname)
-
-# --------------------------
-# 📊 CSV Upload & Analysis
-# --------------------------
-if st.session_state.logged_in:
-    st.title("📊 Upload & Analyze CSV")
-    uploaded_file = st.file_uploader("Upload your CSV", type="csv")
+    uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        log_upload(st.session_state.username, uploaded_file.name, df)
+        try:
+            df = pd.read_csv(uploaded_file)
+            st.dataframe(df)
 
-        st.subheader(f"📄 Preview: `{uploaded_file.name}`")
-        st.dataframe(df)
+            save_upload_history(st.session_state.username, uploaded_file.name)
 
-        st.subheader("🔍 Filter Data")
-        filter_col = st.selectbox("Column to filter", df.columns)
-        if df[filter_col].dtype == "object":
-            keyword = st.text_input("Search keyword")
-            if keyword:
-                df = df[df[filter_col].str.contains(keyword, case=False, na=False)]
-        else:
-            min_val = float(df[filter_col].min())
-            max_val = float(df[filter_col].max())
-            selected = st.slider("Select range", min_val, max_val, (min_val, max_val))
-            df = df[df[filter_col].between(*selected)]
+            st.subheader("🔍 Filter Data")
+            filter_col = st.selectbox("Select column to search/filter", df.columns)
+            search_val = st.text_input("Enter search keyword")
+            if search_val:
+                filtered_df = df[df[filter_col].astype(str).str.contains(search_val, na=False)]
+                st.dataframe(filtered_df)
+            else:
+                filtered_df = df
 
-        st.dataframe(df)
+            st.subheader("📈 Chart Builder")
+            all_charts = generate_charts(df)
+            chart_options = list(all_charts.keys())
+            selected_chart = st.selectbox("Select chart to view in app (all charts will be in PPT)", ["None"] + chart_options)
 
-        st.subheader("📈 Chart")
-        chart_type = st.selectbox("Chart type", ["Scatter", "Line", "Histogram", "Box", "Heatmap", "Pie"])
-        num_cols = df.select_dtypes(include=["int64", "float64"]).columns.tolist()
-        cat_cols = df.select_dtypes(include=["object"]).columns.tolist()
-        fig, ax = plt.subplots()
+            if selected_chart != "None" and selected_chart in all_charts:
+        st.pyplot(all_charts[selected_chart])
 
-        if chart_type == "Scatter" and len(num_cols) >= 2:
-            x = st.selectbox("X-axis", num_cols)
-            y = st.selectbox("Y-axis", num_cols, index=1)
-            sns.scatterplot(data=df, x=x, y=y, ax=ax)
-        elif chart_type == "Line" and len(num_cols) >= 2:
-            x = st.selectbox("X-axis", num_cols)
-            y = st.selectbox("Y-axis", num_cols, index=1)
-            sns.lineplot(data=df, x=x, y=y, ax=ax)
-        elif chart_type == "Histogram" and num_cols:
-            col = st.selectbox("Column", num_cols)
-            sns.histplot(df[col], kde=True, ax=ax)
-        elif chart_type == "Box" and num_cols:
-            col = st.selectbox("Column", num_cols)
-            sns.boxplot(y=df[col], ax=ax)
-        elif chart_type == "Heatmap" and len(num_cols) >= 2:
-            sns.heatmap(df[num_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        elif chart_type == "Pie" and cat_cols:
-            col = st.selectbox("Category column", cat_cols)
-            pie_data = df[col].value_counts()
-            plt.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%")
-            plt.axis("equal")
+    # Always include all charts in PPT regardless of selected_chart
+    charts_for_ppt = all_charts
 
-        st.pyplot(fig)
+            token = "hf_manideep"  # Hugging Face token
+            summary = summarize_csv(df, token)
 
-        chart_buf = fig_to_png(fig)
-        st.download_button("📥 Download Plot as PNG", data=chart_buf, file_name="plot.png", mime="image/png")
+            if st.button("Export to PPT"):
+            ppt_stream = export_to_ppt(charts_for_ppt, summary)
+                st.download_button("Download PPT", ppt_stream, file_name="data_analysis_report.pptx")
 
-        ppt_buf = generate_ppt_from_df(df, chart_buf, chart_type)
-        st.download_button("📥 Download PPT Report", data=ppt_buf,
-                           file_name="report.pptx", mime="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        except Exception as e:
+            st.error(f"Error processing CSV: {e}")
+
+    if st.session_state.username == ADMIN_USERNAME:
+        st.subheader("📁 Upload History")
+        history = get_upload_history()
+        st.dataframe(pd.DataFrame(history))
+
+main()
