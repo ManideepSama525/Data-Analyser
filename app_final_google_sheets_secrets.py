@@ -25,7 +25,7 @@ creds_dict = dict(st.secrets["google_sheets"])
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 
-auth_sheet = client.open("streamlit_user_auth").worksheet("users")
+auth_sheet = client.open("streamlit_user_auth").worksheet("user_database")
 history_sheet = client.open("streamlit_user_auth").worksheet("upload_history")
 
 ADMIN_USERNAME = "manideep"
