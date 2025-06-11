@@ -143,7 +143,8 @@ def export_to_ppt(charts, summary):
         content = slide.placeholders[1].text_frame
         for sentence in summary.split('.'):
             if sentence.strip():
-                content.add_paragraph().text = sentence.strip()
+                p = content.add_paragraph()
+                p.text = sentence.strip()
 
     for title, fig in charts.items():
         slide = prs.slides.add_slide(prs.slide_layouts[5])
