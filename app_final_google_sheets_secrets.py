@@ -175,7 +175,7 @@ def main():
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
-        st.experimental_rerun()
+        st.rerun()
 
     uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
@@ -203,8 +203,8 @@ def main():
                 st.pyplot(all_charts[selected_chart])
 
             
-                # Always include all charts in PPT regardless of selected_chart
-                                        charts_for_ppt = all_charts
+                            # Always include all charts in PPT regardless of selected_chart
+            charts_for_ppt = all_charts
 
             token = "hf_manideep"  # Hugging Face token
             summary = summarize_csv(df, token)
