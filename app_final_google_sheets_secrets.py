@@ -202,9 +202,6 @@ def main():
             if selected_chart != "None" and selected_chart in all_charts:
                 st.pyplot(all_charts[selected_chart])
 
-            # Always include all charts in PPT regardless of selected_chart
-            charts_for_ppt = all_charts
-
     # Always include all charts in PPT regardless of selected_chart
     charts_for_ppt = all_charts
 
