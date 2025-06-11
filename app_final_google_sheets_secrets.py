@@ -200,7 +200,10 @@ def main():
             selected_chart = st.selectbox("Select chart to view in app (all charts will be in PPT)", ["None"] + chart_options)
 
             if selected_chart != "None" and selected_chart in all_charts:
-        st.pyplot(all_charts[selected_chart])
+                st.pyplot(all_charts[selected_chart])
+
+            # Always include all charts in PPT regardless of selected_chart
+            charts_for_ppt = all_charts
 
     # Always include all charts in PPT regardless of selected_chart
     charts_for_ppt = all_charts
@@ -209,7 +212,7 @@ def main():
             summary = summarize_csv(df, token)
 
             if st.button("Export to PPT"):
-            ppt_stream = export_to_ppt(charts_for_ppt, summary)
+                ppt_stream = export_to_ppt(charts_for_ppt, summary)
                 st.download_button("Download PPT", ppt_stream, file_name="data_analysis_report.pptx")
 
         except Exception as e:
