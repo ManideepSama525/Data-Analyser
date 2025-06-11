@@ -20,7 +20,7 @@ st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 # ==================== GOOGLE SHEETS SETUP ====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-creds_dict = st.secrets["google_sheets"]
+creds_dict = dict(st.secrets["google_sheets"])
 
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
@@ -202,8 +202,9 @@ def main():
             if selected_chart != "None" and selected_chart in all_charts:
                 st.pyplot(all_charts[selected_chart])
 
-             # Always include all charts in PPT regardless of selected_chart
-            charts_for_ppt = all_charts
+            
+                # Always include all charts in PPT regardless of selected_chart
+                        charts_for_ppt = all_charts
 
             token = "hf_manideep"  # Hugging Face token
             summary = summarize_csv(df, token)
