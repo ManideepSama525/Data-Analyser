@@ -204,7 +204,7 @@ def main():
 
             
                 # Always include all charts in PPT regardless of selected_chart
-                        charts_for_ppt = all_charts
+                                        charts_for_ppt = all_charts
 
             token = "hf_manideep"  # Hugging Face token
             summary = summarize_csv(df, token)
