@@ -170,6 +170,7 @@ def main():
               auth_action = st.radio("Choose action", ["Login", "Sign Up"], horizontal=True)
               username = st.text_input("Username")
               password = st.text_input("Password", type="password")
+    auth_action = st.sidebar.selectbox("Choose Action", ["Login", "Sign Up"])
 
     if auth_action == "Login":
         if st.button("Login"):
