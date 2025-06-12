@@ -232,25 +232,86 @@ def main():
             st.dataframe(filtered)
 
             st.subheader("📈 Chart Builder")
-            charts = generate_charts(df)
 
-            if charts:
-                choice = st.selectbox("View chart", ["None"] + list(charts))
-                if choice != "None":
-                    st.pyplot(charts[choice])
+numeric_cols = df.select_dtypes(include="number").columns.tolist()
+categorical_cols = df.select_dtypes(include="object").columns.tolist()
 
-                selected = st.multiselect("Select charts to include in PPT", list(charts.keys()))
-                summary = summarize_csv(df, token="hf_manideep")
+available_charts = ["Scatter Plot", "Line Plot", "Histogram", "Box Plot", "Heatmap"]
+if categorical_cols:
+    available_charts.append("Pie Chart")
 
-                if st.button("Export to PPT"):
-                    if selected:
-                        ppt = export_to_ppt(charts, summary, selected)
-                        st.download_button(
-                            "Download PPT",
-                            data=ppt,
-                            file_name="data_analysis_report.pptx",
-                            mime="application/vnd.openxmlformats-officedocument.presentation.presentation"
-                        )
+selected_charts = st.multiselect("Select charts to include in PPT", available_charts)
+
+custom_chart_params = {}
+
+if "Scatter Plot" in selected_charts and len(numeric_cols) >= 2:
+    x = st.selectbox("Scatter Plot - X Axis", numeric_cols, key="scatter_x")
+    y = st.selectbox("Scatter Plot - Y Axis", numeric_cols, key="scatter_y")
+    custom_chart_params["Scatter Plot"] = {"x": x, "y": y}
+
+if "Line Plot" in selected_charts and len(numeric_cols) >= 1:
+    x = st.selectbox("Line Plot - X Axis", df.columns, key="line_x")
+    y = st.multiselect("Line Plot - Y Axis (one or more)", numeric_cols, key="line_y", default=numeric_cols)
+    custom_chart_params["Line Plot"] = {"x": x, "y": y}
+
+if "Pie Chart" in selected_charts and categorical_cols:
+    cat_col = st.selectbox("Pie Chart - Category Column", categorical_cols, key="pie_col")
+    custom_chart_params["Pie Chart"] = {"col": cat_col}
+
+def generate_selected_charts(df, selected_charts, params):
+    charts = {}
+    if "Scatter Plot" in selected_charts:
+        fig, ax = plt.subplots()
+        sns.scatterplot(data=df, x=params["Scatter Plot"]["x"], y=params["Scatter Plot"]["y"], ax=ax)
+        ax.set_title("Scatter Plot")
+        charts["Scatter Plot"] = fig
+
+    if "Line Plot" in selected_charts:
+        fig, ax = plt.subplots()
+        df.plot(x=params["Line Plot"]["x"], y=params["Line Plot"]["y"], ax=ax)
+        ax.set_title("Line Plot")
+        charts["Line Plot"] = fig
+
+    if "Histogram" in selected_charts:
+        fig, ax = plt.subplots()
+        df[numeric_cols].hist(ax=ax)
+        plt.tight_layout()
+        charts["Histogram"] = fig
+
+    if "Box Plot" in selected_charts:
+        fig, ax = plt.subplots()
+        sns.boxplot(data=df[numeric_cols], ax=ax)
+        ax.set_title("Box Plot")
+        charts["Box Plot"] = fig
+
+    if "Heatmap" in selected_charts:
+        fig, ax = plt.subplots()
+        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        ax.set_title("Correlation Heatmap")
+        charts["Heatmap"] = fig
+
+    if "Pie Chart" in selected_charts:
+        col = params["Pie Chart"]["col"]
+        counts = df[col].value_counts()
+        fig, ax = plt.subplots()
+        ax.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=90)
+        ax.axis("equal")
+        ax.set_title(f"Pie Chart of {col}")
+        charts["Pie Chart"] = fig
+
+    return charts
+
+if st.button("Export to PPT"):
+    charts = generate_selected_charts(df, selected_charts, custom_chart_params)
+    summary = summarize_csv(df, token="hf_manideep")
+    ppt = export_to_ppt(charts, summary)
+    st.download_button(
+        "Download PPT",
+        data=ppt,
+        file_name="data_analysis_report.pptx",
+        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
+
                     else:
                         st.warning("Please select at least one chart to include in the PPT.")
             else:
