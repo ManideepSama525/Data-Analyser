@@ -216,7 +216,7 @@ def main():
     )
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
-        st.experimental_rerun()
+        st.rerun()
 
     uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file is not None:
