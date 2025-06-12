@@ -166,10 +166,10 @@ def main():
         st.session_state.username = ""
 
     if not st.session_state.logged_in:
-    st.title("🔐 Welcome")
-    auth_action = st.radio("Choose action", ["Login", "Sign Up"], horizontal=True)
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+              st.title("🔐 Welcome")
+              auth_action = st.radio("Choose action", ["Login", "Sign Up"], horizontal=True)
+              username = st.text_input("Username")
+              password = st.text_input("Password", type="password")
 
     if auth_action == "Login":
         if st.button("Login"):
