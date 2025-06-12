@@ -94,59 +94,6 @@ def summarize_csv(df, token):
     except:
         return "Summary could not be generated."
 
-def generate_charts(df):
-    charts = {}
-    for col in df.select_dtypes(include="object").columns:
-        df[col] = df[col].astype(str)
-
-    for col in df.columns:
-        if df[col].dtype == "object":
-            try:
-                df[col] = pd.to_numeric(df[col], errors="coerce")
-            except:
-                pass
-
-    numeric_df = df.select_dtypes(include="number").dropna(axis=1, how="all")
-
-    if numeric_df.shape[1] >= 2:
-        fig, ax = plt.subplots()
-        sns.scatterplot(data=numeric_df, x=numeric_df.columns[0], y=numeric_df.columns[1], ax=ax)
-        ax.set_title("Scatter Plot")
-        charts["Scatter Plot"] = fig
-
-    if numeric_df.shape[1] >= 1:
-        fig, ax = plt.subplots()
-        numeric_df.plot(ax=ax)
-        ax.set_title("Line Plot")
-        charts["Line Plot"] = fig
-
-        fig, ax = plt.subplots()
-        numeric_df.hist(ax=ax)
-        plt.tight_layout()
-        charts["Histogram"] = fig
-
-        fig, ax = plt.subplots()
-        sns.boxplot(data=numeric_df, ax=ax)
-        ax.set_title("Box Plot")
-        charts["Box Plot"] = fig
-
-        fig, ax = plt.subplots()
-        sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax)
-        ax.set_title("Correlation Heatmap")
-        charts["Heatmap"] = fig
-
-    cat_df = df.select_dtypes(include="object")
-    if not cat_df.empty:
-        col = cat_df.columns[0]
-        counts = df[col].value_counts()
-        fig, ax = plt.subplots()
-        ax.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=90)
-        ax.axis("equal")
-        ax.set_title(f"Pie Chart of {col}")
-        charts["Pie Chart"] = fig
-
-    return charts
-
 def export_to_ppt(charts, summary, selected_charts):
     prs = Presentation()
     title_layout = prs.slide_layouts[0]
@@ -178,6 +125,51 @@ def export_to_ppt(charts, summary, selected_charts):
     prs.save(buf)
     buf.seek(0)
     return buf
+
+def generate_selected_charts(df, selected_charts, params):
+    charts = {}
+    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+
+    if "Scatter Plot" in selected_charts:
+        fig, ax = plt.subplots()
+        sns.scatterplot(data=df, x=params["Scatter Plot"]["x"], y=params["Scatter Plot"]["y"], ax=ax)
+        ax.set_title("Scatter Plot")
+        charts["Scatter Plot"] = fig
+
+    if "Line Plot" in selected_charts:
+        fig, ax = plt.subplots()
+        df.plot(x=params["Line Plot"]["x"], y=params["Line Plot"]["y"], ax=ax)
+        ax.set_title("Line Plot")
+        charts["Line Plot"] = fig
+
+    if "Histogram" in selected_charts:
+        fig, ax = plt.subplots()
+        df[numeric_cols].hist(ax=ax)
+        plt.tight_layout()
+        charts["Histogram"] = fig
+
+    if "Box Plot" in selected_charts:
+        fig, ax = plt.subplots()
+        sns.boxplot(data=df[numeric_cols], ax=ax)
+        ax.set_title("Box Plot")
+        charts["Box Plot"] = fig
+
+    if "Heatmap" in selected_charts:
+        fig, ax = plt.subplots()
+        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
+        ax.set_title("Correlation Heatmap")
+        charts["Heatmap"] = fig
+
+    if "Pie Chart" in selected_charts:
+        col = params["Pie Chart"]["col"]
+        counts = df[col].value_counts()
+        fig, ax = plt.subplots()
+        ax.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=90)
+        ax.axis("equal")
+        ax.set_title(f"Pie Chart of {col}")
+        charts["Pie Chart"] = fig
+
+    return charts
 
 def main():
     if "logged_in" not in st.session_state:
@@ -232,97 +224,49 @@ def main():
             st.dataframe(filtered)
 
             st.subheader("📈 Chart Builder")
+            numeric_cols = df.select_dtypes(include="number").columns.tolist()
+            categorical_cols = df.select_dtypes(include="object").columns.tolist()
 
-numeric_cols = df.select_dtypes(include="number").columns.tolist()
-categorical_cols = df.select_dtypes(include="object").columns.tolist()
+            available_charts = ["Scatter Plot", "Line Plot", "Histogram", "Box Plot", "Heatmap"]
+            if categorical_cols:
+                available_charts.append("Pie Chart")
 
-available_charts = ["Scatter Plot", "Line Plot", "Histogram", "Box Plot", "Heatmap"]
-if categorical_cols:
-    available_charts.append("Pie Chart")
+            selected_charts = st.multiselect("Select charts to include in PPT", available_charts)
+            custom_chart_params = {}
 
-selected_charts = st.multiselect("Select charts to include in PPT", available_charts)
+            if "Scatter Plot" in selected_charts and len(numeric_cols) >= 2:
+                x = st.selectbox("Scatter Plot - X Axis", numeric_cols, key="scatter_x")
+                y = st.selectbox("Scatter Plot - Y Axis", numeric_cols, key="scatter_y")
+                custom_chart_params["Scatter Plot"] = {"x": x, "y": y}
 
-custom_chart_params = {}
+            if "Line Plot" in selected_charts and len(numeric_cols) >= 1:
+                x = st.selectbox("Line Plot - X Axis", df.columns, key="line_x")
+                y = st.multiselect("Line Plot - Y Axis (one or more)", numeric_cols, key="line_y", default=numeric_cols)
+                custom_chart_params["Line Plot"] = {"x": x, "y": y}
 
-if "Scatter Plot" in selected_charts and len(numeric_cols) >= 2:
-    x = st.selectbox("Scatter Plot - X Axis", numeric_cols, key="scatter_x")
-    y = st.selectbox("Scatter Plot - Y Axis", numeric_cols, key="scatter_y")
-    custom_chart_params["Scatter Plot"] = {"x": x, "y": y}
+            if "Pie Chart" in selected_charts and categorical_cols:
+                cat_col = st.selectbox("Pie Chart - Category Column", categorical_cols, key="pie_col")
+                custom_chart_params["Pie Chart"] = {"col": cat_col}
 
-if "Line Plot" in selected_charts and len(numeric_cols) >= 1:
-    x = st.selectbox("Line Plot - X Axis", df.columns, key="line_x")
-    y = st.multiselect("Line Plot - Y Axis (one or more)", numeric_cols, key="line_y", default=numeric_cols)
-    custom_chart_params["Line Plot"] = {"x": x, "y": y}
-
-if "Pie Chart" in selected_charts and categorical_cols:
-    cat_col = st.selectbox("Pie Chart - Category Column", categorical_cols, key="pie_col")
-    custom_chart_params["Pie Chart"] = {"col": cat_col}
-
-def generate_selected_charts(df, selected_charts, params):
-    charts = {}
-    if "Scatter Plot" in selected_charts:
-        fig, ax = plt.subplots()
-        sns.scatterplot(data=df, x=params["Scatter Plot"]["x"], y=params["Scatter Plot"]["y"], ax=ax)
-        ax.set_title("Scatter Plot")
-        charts["Scatter Plot"] = fig
-
-    if "Line Plot" in selected_charts:
-        fig, ax = plt.subplots()
-        df.plot(x=params["Line Plot"]["x"], y=params["Line Plot"]["y"], ax=ax)
-        ax.set_title("Line Plot")
-        charts["Line Plot"] = fig
-
-    if "Histogram" in selected_charts:
-        fig, ax = plt.subplots()
-        df[numeric_cols].hist(ax=ax)
-        plt.tight_layout()
-        charts["Histogram"] = fig
-
-    if "Box Plot" in selected_charts:
-        fig, ax = plt.subplots()
-        sns.boxplot(data=df[numeric_cols], ax=ax)
-        ax.set_title("Box Plot")
-        charts["Box Plot"] = fig
-
-    if "Heatmap" in selected_charts:
-        fig, ax = plt.subplots()
-        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        ax.set_title("Correlation Heatmap")
-        charts["Heatmap"] = fig
-
-    if "Pie Chart" in selected_charts:
-        col = params["Pie Chart"]["col"]
-        counts = df[col].value_counts()
-        fig, ax = plt.subplots()
-        ax.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=90)
-        ax.axis("equal")
-        ax.set_title(f"Pie Chart of {col}")
-        charts["Pie Chart"] = fig
-
-    return charts
-
-if st.button("Export to PPT"):
-    charts = generate_selected_charts(df, selected_charts, custom_chart_params)
-    summary = summarize_csv(df, token="hf_manideep")
-    ppt = export_to_ppt(charts, summary)
-    st.download_button(
-        "Download PPT",
-        data=ppt,
-        file_name="data_analysis_report.pptx",
-        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    )
-
-                    else:
-                        st.warning("Please select at least one chart to include in the PPT.")
-            else:
-                st.warning("⚠️ No charts could be generated from your data.")
-                st.json({col: str(df[col].dtype) for col in df.columns})
+            if st.button("Export to PPT"):
+                if selected_charts:
+                    charts = generate_selected_charts(df, selected_charts, custom_chart_params)
+                    summary = summarize_csv(df, token="hf_manideep")
+                    ppt = export_to_ppt(charts, summary, selected_charts)
+                    st.download_button(
+                        "Download PPT",
+                        data=ppt,
+                        file_name="data_analysis_report.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    )
+                else:
+                    st.warning("Please select at least one chart to include in the PPT.")
 
         except Exception as e:
             st.error(f"Error: {e}")
 
     if st.session_state.username == ADMIN_USERNAME:
-        st.subheader("🧑‍💻 Admin: Manage Users / History")
+        st.subheader("🧑‍💼 Admin: Manage Users / History")
         users = get_users()
         deletable = [u["username"] for u in users if u["username"] != ADMIN_USERNAME]
         to_del = st.selectbox("Delete User", deletable)
