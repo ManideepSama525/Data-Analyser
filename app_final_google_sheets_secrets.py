@@ -1,5 +1,9 @@
 import streamlit as st
-st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="Data Analyzer",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import bcrypt
