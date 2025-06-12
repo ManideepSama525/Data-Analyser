@@ -264,6 +264,37 @@ def main():
 
         except Exception as e:
             st.error(f"Error: {e}")
+            st.subheader("🎨 Custom Chart Builder (One Chart Preview)")
+
+            single_chart_type = st.selectbox("Chart Type", ["Scatter", "Line", "Bar", "Pie"])
+
+            x_axis_col = st.selectbox("X-axis Column", df.columns, key="custom_x")
+            y_axis_col = None
+            if single_chart_type != "Pie":
+                y_axis_col = st.selectbox("Y-axis Column", df.columns, key="custom_y")
+
+            if st.button("Generate Chart"):
+                fig, ax = plt.subplots()
+
+                if single_chart_type == "Scatter":
+                    sns.scatterplot(data=df, x=x_axis_col, y=y_axis_col, ax=ax)
+                    ax.set_title("Scatter Plot")
+
+                elif single_chart_type == "Line":
+                    df.plot(x=x_axis_col, y=y_axis_col, ax=ax)
+                    ax.set_title("Line Plot")
+
+                elif single_chart_type == "Bar":
+                    df.groupby(x_axis_col)[y_axis_col].mean().plot(kind="bar", ax=ax)
+                    ax.set_title("Bar Chart")
+
+                elif single_chart_type == "Pie":
+                    pie_data = df[x_axis_col].value_counts()
+                    ax.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=90)
+                    ax.axis("equal")
+                    ax.set_title(f"Pie Chart of {x_axis_col}")
+
+                st.pyplot(fig)
 
     if st.session_state.username == ADMIN_USERNAME:
         st.subheader("🧑‍💼 Admin: Manage Users / History")
