@@ -146,7 +146,7 @@ def generate_charts(df):
     return charts
 
 # ==================== PPT EXPORT ====================
-def export_to_ppt(charts, summary):
+def export_to_ppt(charts, summary, selected_charts):
     prs = Presentation()
     title_layout = prs.slide_layouts[0]
     slide = prs.slides.add_slide(title_layout)
@@ -161,16 +161,17 @@ def export_to_ppt(charts, summary):
         for sentence in summary.split("."):
             sentence = sentence.strip()
             if sentence:
-                p = tf.add_paragraph()
-                p.text = sentence
+                tf.add_paragraph().text = sentence
 
-    for title, fig in charts.items():
-        slide = prs.slides.add_slide(prs.slide_layouts[5])
-        slide.shapes.title.text = title
-        img_stream = io.BytesIO()
-        fig.savefig(img_stream, format="png")
-        img_stream.seek(0)
-        slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(8))
+    for title in selected_charts:
+        if title in charts:
+            fig = charts[title]
+            slide = prs.slides.add_slide(prs.slide_layouts[5])
+            slide.shapes.title.text = title
+            img_stream = io.BytesIO()
+            fig.savefig(img_stream, format="png")
+            img_stream.seek(0)
+            slide.shapes.add_picture(img_stream, Inches(1), Inches(1.5), width=Inches(8))
 
     buf = io.BytesIO()
     prs.save(buf)
@@ -240,15 +241,20 @@ def main():
             if choice != "None":
                 st.pyplot(charts[choice])
 
+            selected = st.multiselect("Select charts to include in PPT", list(charts.keys()))
+
             summary = summarize_csv(df, token="hf_manideep")
             if st.button("Export to PPT"):
-                ppt = export_to_ppt(charts, summary)
-                st.download_button(
-                    "Download PPT",
-                    data=ppt,
-                    file_name="data_analysis_report.pptx",
-                    mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                )
+                if selected:
+                    ppt = export_to_ppt(charts, summary, selected)
+                    st.download_button(
+                        "Download PPT",
+                        data=ppt,
+                        file_name="data_analysis_report.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    )
+                else:
+                    st.warning("Please select at least one chart to include in the PPT.")
 
         except Exception as e:
             st.error(f"Error: {e}")
