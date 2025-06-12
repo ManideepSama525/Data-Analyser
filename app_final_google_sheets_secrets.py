@@ -20,11 +20,9 @@ import datetime
 import requests
 import json
 
-# ==================== CONFIG ====================
 st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 st.title("📊 Data Analyzer")
 
-# ==================== GOOGLE SHEETS SETUP ====================
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive"
@@ -38,7 +36,6 @@ history_sheet = client.open("user_database").worksheet("upload_history")
 
 ADMIN_USERNAME = "admin"
 
-# ==================== AUTH FUNCTIONS ====================
 def get_users():
     return auth_sheet.get_all_records()
 
@@ -83,7 +80,6 @@ def save_upload_history(username, filename):
 def get_upload_history():
     return history_sheet.get_all_records()
 
-# ==================== SUMMARIZATION ====================
 def summarize_csv(df, token):
     text = df.to_csv(index=False)
     headers = {"Authorization": f"Bearer {token}"}
@@ -98,17 +94,23 @@ def summarize_csv(df, token):
     except:
         return "Summary could not be generated."
 
-# ==================== CHART GENERATION ====================
 def generate_charts(df):
     charts = {}
+    for col in df.select_dtypes(include="object").columns:
+        df[col] = df[col].astype(str)
+
+    for col in df.columns:
+        if df[col].dtype == "object":
+            try:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+            except:
+                pass
+
     numeric_df = df.select_dtypes(include="number").dropna(axis=1, how="all")
 
     if numeric_df.shape[1] >= 2:
         fig, ax = plt.subplots()
-        sns.scatterplot(data=numeric_df,
-                        x=numeric_df.columns[0],
-                        y=numeric_df.columns[1],
-                        ax=ax)
+        sns.scatterplot(data=numeric_df, x=numeric_df.columns[0], y=numeric_df.columns[1], ax=ax)
         ax.set_title("Scatter Plot")
         charts["Scatter Plot"] = fig
 
@@ -145,7 +147,6 @@ def generate_charts(df):
 
     return charts
 
-# ==================== PPT EXPORT ====================
 def export_to_ppt(charts, summary, selected_charts):
     prs = Presentation()
     title_layout = prs.slide_layouts[0]
@@ -178,7 +179,6 @@ def export_to_ppt(charts, summary, selected_charts):
     buf.seek(0)
     return buf
 
-# ==================== MAIN APP ====================
 def main():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
@@ -198,7 +198,7 @@ def main():
                     st.rerun()
                 else:
                     st.error("Invalid credentials.")
-        else:  # Sign Up
+        else:
             if st.button("Sign Up"):
                 if find_user(username):
                     st.error("Username already exists.")
@@ -209,7 +209,6 @@ def main():
                     st.success("✅ Account created! Please Log In.")
         return
 
-    # After Login
     st.sidebar.header("⚙️ Admin Panel")
     st.sidebar.markdown(
         f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>",
@@ -229,32 +228,34 @@ def main():
             st.subheader("🔍 Filter Data")
             col = st.selectbox("Filter column", df.columns)
             val = st.text_input("Keyword")
-            filtered = (
-                df[df[col].astype(str).str.contains(val, na=False)]
-                if val else df
-            )
+            filtered = df[df[col].astype(str).str.contains(val, na=False)] if val else df
             st.dataframe(filtered)
 
             st.subheader("📈 Chart Builder")
             charts = generate_charts(df)
-            choice = st.selectbox("View chart", ["None"] + list(charts))
-            if choice != "None":
-                st.pyplot(charts[choice])
 
-            selected = st.multiselect("Select charts to include in PPT", list(charts.keys()))
+            if charts:
+                choice = st.selectbox("View chart", ["None"] + list(charts))
+                if choice != "None":
+                    st.pyplot(charts[choice])
 
-            summary = summarize_csv(df, token="hf_manideep")
-            if st.button("Export to PPT"):
-                if selected:
-                    ppt = export_to_ppt(charts, summary, selected)
-                    st.download_button(
-                        "Download PPT",
-                        data=ppt,
-                        file_name="data_analysis_report.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    )
-                else:
-                    st.warning("Please select at least one chart to include in the PPT.")
+                selected = st.multiselect("Select charts to include in PPT", list(charts.keys()))
+                summary = summarize_csv(df, token="hf_manideep")
+
+                if st.button("Export to PPT"):
+                    if selected:
+                        ppt = export_to_ppt(charts, summary, selected)
+                        st.download_button(
+                            "Download PPT",
+                            data=ppt,
+                            file_name="data_analysis_report.pptx",
+                            mime="application/vnd.openxmlformats-officedocument.presentation.presentation"
+                        )
+                    else:
+                        st.warning("Please select at least one chart to include in the PPT.")
+            else:
+                st.warning("⚠️ No charts could be generated from your data.")
+                st.json({col: str(df[col].dtype) for col in df.columns})
 
         except Exception as e:
             st.error(f"Error: {e}")
@@ -262,9 +263,7 @@ def main():
     if st.session_state.username == ADMIN_USERNAME:
         st.subheader("🧑‍💻 Admin: Manage Users / History")
         users = get_users()
-        deletable = [
-            u["username"] for u in users if u["username"] != ADMIN_USERNAME
-        ]
+        deletable = [u["username"] for u in users if u["username"] != ADMIN_USERNAME]
         to_del = st.selectbox("Delete User", deletable)
         if st.button("Delete"):
             if delete_user(to_del):
