@@ -166,9 +166,12 @@ def main():
         st.session_state.username = ""
 
     if not st.session_state.logged_in:
-        st.title("🔐 Login")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+    st.title("🔐 Welcome")
+    auth_action = st.radio("Choose action", ["Login", "Sign Up"], horizontal=True)
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if auth_action == "Login":
         if st.button("Login"):
             if authenticate(username, password):
                 st.session_state.logged_in = True
@@ -176,13 +179,21 @@ def main():
                 st.rerun()
             else:
                 st.error("Invalid username or password")
-        return
+    elif auth_action == "Sign Up":
+        if st.button("Sign Up"):
+            if find_user(username):
+                st.error("Username already exists.")
+            elif username.strip() == "" or password.strip() == "":
+                st.error("Username and password cannot be empty.")
+            else:
+                add_user(username, password)
+                st.success("Account created! You can now log in.")
 
     st.sidebar.header("⚙️ Admin Panel")
     st.sidebar.markdown(f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>", unsafe_allow_html=True)
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
-        st.experimental_rerun()
+        st.rerun()
 
     uploaded_file = st.file_uploader("Upload CSV", type="csv")
     if uploaded_file:
