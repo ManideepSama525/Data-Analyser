@@ -1,4 +1,5 @@
 import streamlit as st
+st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_state="expanded")
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import bcrypt
@@ -161,7 +162,6 @@ def export_to_ppt(charts, summary):
 
 # ==================== MAIN APP ====================
 def main():
-    st.set_page_config(page_title="Data Analyzer", layout="wide", initial_sidebar_state="expanded")
     st.title("📊 Data Analyzer")
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
