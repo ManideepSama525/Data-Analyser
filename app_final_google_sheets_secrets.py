@@ -194,7 +194,7 @@ def main():
                 if authenticate(username, password):
                     st.session_state.logged_in = True
                     st.session_state.username = username
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.error("Invalid credentials.")
         else:  # Sign Up
