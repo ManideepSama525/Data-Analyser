@@ -5,7 +5,7 @@ st.set_page_config(
     page_title="Data Analyzer",
     layout="wide",
     initial_sidebar_state="expanded"
-) this the previously code after the new code given it is shown no login credantilas edit it properly and make no loss of features 
+)
 
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -23,16 +23,20 @@ import json
 st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 st.title("📊 Data Analyzer")
 
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
-creds_dict = dict(st.secrets["google_sheets"])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-client = gspread.authorize(creds)
+try:
+    scope = [
+        "https://spreadsheets.google.com/feeds",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    creds_dict = dict(st.secrets["google_sheets"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
 
-auth_sheet = client.open("user_database").worksheet("users")
-history_sheet = client.open("user_database").worksheet("upload_history")
+    auth_sheet = client.open("user_database").worksheet("users")
+    history_sheet = client.open("user_database").worksheet("upload_history")
+except Exception as e:
+    st.error("Google Sheets credentials not found or invalid. Please check .streamlit/secrets.toml.")
+    st.stop()
 
 ADMIN_USERNAME = "admin"
 
@@ -54,10 +58,7 @@ def delete_user(username_to_delete):
     try:
         data = auth_sheet.get_all_values()
         headers = data[0]
-        remaining = [
-            row for row in data
-            if row[0] != username_to_delete and row[0] != "username"
-        ]
+        remaining = [row for row in data if row[0] != username_to_delete and row[0] != "username"]
         auth_sheet.clear()
         auth_sheet.append_row(headers)
         for row in remaining[1:]:
@@ -135,30 +136,42 @@ def generate_selected_charts(df, selected_charts, params):
         sns.scatterplot(data=df, x=params["Scatter Plot"]["x"], y=params["Scatter Plot"]["y"], ax=ax)
         ax.set_title("Scatter Plot")
         charts["Scatter Plot"] = fig
+        st.pyplot(fig)
 
     if "Line Plot" in selected_charts:
         fig, ax = plt.subplots()
         df.plot(x=params["Line Plot"]["x"], y=params["Line Plot"]["y"], ax=ax)
         ax.set_title("Line Plot")
         charts["Line Plot"] = fig
+        st.pyplot(fig)
 
     if "Histogram" in selected_charts:
         fig, ax = plt.subplots()
         df[numeric_cols].hist(ax=ax)
         plt.tight_layout()
         charts["Histogram"] = fig
+        st.pyplot(fig)
 
     if "Box Plot" in selected_charts:
         fig, ax = plt.subplots()
         sns.boxplot(data=df[numeric_cols], ax=ax)
         ax.set_title("Box Plot")
         charts["Box Plot"] = fig
+        st.pyplot(fig)
+
+    if "Violin Plot" in selected_charts:
+        fig, ax = plt.subplots()
+        sns.violinplot(data=df[numeric_cols], ax=ax, inner="box")
+        ax.set_title("Violin Plot")
+        charts["Violin Plot"] = fig
+        st.pyplot(fig)
 
     if "Heatmap" in selected_charts:
         fig, ax = plt.subplots()
         sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
         ax.set_title("Correlation Heatmap")
         charts["Heatmap"] = fig
+        st.pyplot(fig)
 
     if "Pie Chart" in selected_charts:
         col = params["Pie Chart"]["col"]
@@ -168,6 +181,7 @@ def generate_selected_charts(df, selected_charts, params):
         ax.axis("equal")
         ax.set_title(f"Pie Chart of {col}")
         charts["Pie Chart"] = fig
+        st.pyplot(fig)
 
     return charts
 
@@ -227,7 +241,7 @@ def main():
             numeric_cols = df.select_dtypes(include="number").columns.tolist()
             categorical_cols = df.select_dtypes(include="object").columns.tolist()
 
-            available_charts = ["Scatter Plot", "Line Plot", "Histogram", "Box Plot", "Heatmap"]
+            available_charts = ["Scatter Plot", "Line Plot", "Histogram", "Box Plot", "Violin Plot", "Heatmap"]
             if categorical_cols:
                 available_charts.append("Pie Chart")
 
@@ -264,37 +278,6 @@ def main():
 
         except Exception as e:
             st.error(f"Error: {e}")
-            st.subheader("🎨 Custom Chart Builder (One Chart Preview)")
-
-            single_chart_type = st.selectbox("Chart Type", ["Scatter", "Line", "Bar", "Pie"])
-
-            x_axis_col = st.selectbox("X-axis Column", df.columns, key="custom_x")
-            y_axis_col = None
-            if single_chart_type != "Pie":
-                y_axis_col = st.selectbox("Y-axis Column", df.columns, key="custom_y")
-
-            if st.button("Generate Chart"):
-                fig, ax = plt.subplots()
-
-                if single_chart_type == "Scatter":
-                    sns.scatterplot(data=df, x=x_axis_col, y=y_axis_col, ax=ax)
-                    ax.set_title("Scatter Plot")
-
-                elif single_chart_type == "Line":
-                    df.plot(x=x_axis_col, y=y_axis_col, ax=ax)
-                    ax.set_title("Line Plot")
-
-                elif single_chart_type == "Bar":
-                    df.groupby(x_axis_col)[y_axis_col].mean().plot(kind="bar", ax=ax)
-                    ax.set_title("Bar Chart")
-
-                elif single_chart_type == "Pie":
-                    pie_data = df[x_axis_col].value_counts()
-                    ax.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=90)
-                    ax.axis("equal")
-                    ax.set_title(f"Pie Chart of {x_axis_col}")
-
-                st.pyplot(fig)
 
     if st.session_state.username == ADMIN_USERNAME:
         st.subheader("🧑‍💼 Admin: Manage Users / History")
@@ -309,4 +292,4 @@ def main():
         st.table(pd.DataFrame(get_upload_history()))
 
 if __name__ == "__main__":
-    main() update this code 
+    main()
