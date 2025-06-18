@@ -1,103 +1,122 @@
 import streamlit as st
-
-# 🚀 Must be the very first Streamlit command!
-st.set_page_config(
-    page_title="Data Analyzer",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 import bcrypt
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import numpy as np
+import io
 from pptx import Presentation
 from pptx.util import Inches
-import io
-import datetime
-import requests
-import json
+from PIL import Image
+import base64
+import os
 
-st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
-st.title("📊 Data Analyzer")
+# ---------------------- Authentication Functions ----------------------
+users_db = {}
 
-scope = [
-    "https://spreadsheets.google.com/feeds",
-    "https://www.googleapis.com/auth/drive"
-]
-creds_dict = dict(st.secrets["google_sheets"])
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-client = gspread.authorize(creds)
+def authenticate(username, password):
+    if username in users_db:
+        hashed = users_db[username]
+        return bcrypt.checkpw(password.encode(), hashed)
+    return False
 
-auth_sheet = client.open("user_database").worksheet("users")
-history_sheet = client.open("user_database").worksheet("upload_history")
+def add_user(username, password):
+    users_db[username] = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
-ADMIN_USERNAME = "admin"
+def find_user(username):
+    return username in users_db
 
-# Authentication Functions...
-# [omitted for brevity, keep as-is]
+# ---------------------- Chart Plotting Functions ----------------------
+def plot_chart(chart_type, df, x_col, y_col):
+    fig, ax = plt.subplots()
+    if chart_type == "Line":
+        sns.lineplot(data=df, x=x_col, y=y_col, ax=ax)
+    elif chart_type == "Bar":
+        sns.barplot(data=df, x=x_col, y=y_col, ax=ax)
+    elif chart_type == "Scatter":
+        sns.scatterplot(data=df, x=x_col, y=y_col, ax=ax)
+    elif chart_type == "Histogram":
+        sns.histplot(data=df, x=x_col, ax=ax)
+    elif chart_type == "Box":
+        sns.boxplot(data=df, x=x_col, y=y_col, ax=ax)
+    elif chart_type == "Violin":
+        sns.violinplot(data=df, x=x_col, y=y_col, ax=ax)
+    st.pyplot(fig)
+    return fig
 
-# Chart Generation
+# ---------------------- PowerPoint Export Function ----------------------
+def generate_ppt(charts):
+    prs = Presentation()
+    for chart in charts:
+        slide = prs.slides.add_slide(prs.slide_layouts[5])
+        image_stream = io.BytesIO()
+        chart.savefig(image_stream, format='png')
+        image_stream.seek(0)
+        slide.shapes.add_picture(image_stream, Inches(1), Inches(1), Inches(8), Inches(5))
+    ppt_bytes = io.BytesIO()
+    prs.save(ppt_bytes)
+    ppt_bytes.seek(0)
+    return ppt_bytes
 
-def generate_selected_charts(df, selected_charts, params):
-    charts = {}
-    numeric_cols = df.select_dtypes(include="number").columns.tolist()
+# ---------------------- Main App ----------------------
+def main():
+    st.set_page_config(page_title="Data Analyzer", layout="wide")
+    st.title("📊 Data Analyzer")
 
-    if "Scatter Plot" in selected_charts:
-        fig, ax = plt.subplots()
-        sns.scatterplot(data=df, x=params["Scatter Plot"]["x"], y=params["Scatter Plot"]["y"], ax=ax)
-        ax.set_title("Scatter Plot")
-        charts["Scatter Plot"] = fig
+    # Debug check
+    st.write("✅ Debug: Reached main")
 
-    if "Line Plot" in selected_charts:
-        fig, ax = plt.subplots()
-        df.plot(x=params["Line Plot"]["x"], y=params["Line Plot"]["y"], ax=ax)
-        ax.set_title("Line Plot")
-        charts["Line Plot"] = fig
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+        st.session_state.username = ""
 
-    if "Histogram" in selected_charts:
-        fig, ax = plt.subplots()
-        df[numeric_cols].hist(ax=ax)
-        plt.tight_layout()
-        charts["Histogram"] = fig
+    if not st.session_state.logged_in:
+        st.subheader("🔐 Welcome")
+        auth_action = st.radio("Choose action", ["Login", "Sign Up"], horizontal=True)
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
 
-    if "Box Plot" in selected_charts:
-        fig, ax = plt.subplots()
-        sns.boxplot(data=df[numeric_cols], ax=ax)
-        ax.set_title("Box Plot")
-        charts["Box Plot"] = fig
+        if auth_action == "Login":
+            if st.button("Login"):
+                if authenticate(username, password):
+                    st.session_state.logged_in = True
+                    st.session_state.username = username
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials.")
+        else:
+            if st.button("Sign Up"):
+                if find_user(username):
+                    st.error("Username already exists.")
+                elif not username or not password:
+                    st.error("Provide both username and password.")
+                else:
+                    add_user(username, password)
+                    st.success("✅ Account created! Please Log In.")
+        return
 
-    if "Heatmap" in selected_charts:
-        fig, ax = plt.subplots()
-        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap="coolwarm", ax=ax)
-        ax.set_title("Correlation Heatmap")
-        charts["Heatmap"] = fig
+    # App Content After Login
+    uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+    if uploaded_file:
+        df = pd.read_csv(uploaded_file)
+        st.subheader("📄 Data Preview")
+        st.dataframe(df)
 
-    if "Pie Chart" in selected_charts:
-        col = params["Pie Chart"]["col"]
-        counts = df[col].value_counts()
-        fig, ax = plt.subplots()
-        ax.pie(counts, labels=counts.index, autopct="%1.1f%%", startangle=90)
-        ax.axis("equal")
-        ax.set_title(f"Pie Chart of {col}")
-        charts["Pie Chart"] = fig
+        numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+        all_columns = df.columns.tolist()
 
-    if "Violin Plot" in selected_charts:
-        fig, ax = plt.subplots()
-        sns.violinplot(x=params["Violin Plot"]["x"], y=params["Violin Plot"]["y"], data=df, ax=ax)
-        ax.set_title("Violin Plot")
-        charts["Violin Plot"] = fig
+        chart_type = st.selectbox("Choose a chart type", ["Line", "Bar", "Scatter", "Histogram", "Box", "Violin"])
+        x_axis = st.selectbox("X-axis", all_columns)
+        y_axis = st.selectbox("Y-axis", numeric_columns)
 
-    return charts
+        if st.button("Generate Chart"):
+            chart_fig = plot_chart(chart_type, df, x_axis, y_axis)
+            st.session_state['last_chart'] = chart_fig
 
-# Main UI and functionality...
-# Update UI parts to:
-# - Include "Violin Plot" in available_charts
-# - Let user select x (categorical) and y (numeric) axes
-# - Pass these params to `generate_selected_charts`
-# - Add violin plot to PPT
-# [Continue code from your existing main() function with updated chart logic above]
+        if 'last_chart' in st.session_state:
+            if st.button("Download as PowerPoint"):
+                ppt_bytes = generate_ppt([st.session_state['last_chart']])
+                st.download_button("📥 Download PPT", ppt_bytes, file_name="charts.pptx")
 
-# 🔗 Let me know if you'd like the rest of the full updated code (including full `main()` and admin panel updates) pasted here!
+if __name__ == "__main__":
+    main()
