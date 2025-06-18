@@ -40,8 +40,10 @@ except Exception as e:
 
 ADMIN_USERNAME = "admin"
 
+
 def get_users():
     return auth_sheet.get_all_records()
+
 
 def find_user(username):
     users = get_users()
@@ -50,9 +52,11 @@ def find_user(username):
             return user
     return None
 
+
 def add_user(username, password):
     hashed_pw = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
     auth_sheet.append_row([username, hashed_pw])
+
 
 def delete_user(username_to_delete):
     try:
@@ -68,18 +72,22 @@ def delete_user(username_to_delete):
         st.error(f"Error deleting user: {e}")
         return False
 
+
 def authenticate(username, password):
     user = find_user(username)
     if user and bcrypt.checkpw(password.encode(), user["password"].encode()):
         return True
     return False
 
+
 def save_upload_history(username, filename):
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     history_sheet.append_row([username, filename, timestamp])
 
+
 def get_upload_history():
     return history_sheet.get_all_records()
+
 
 def summarize_csv(df, token):
     text = df.to_csv(index=False)
@@ -94,6 +102,7 @@ def summarize_csv(df, token):
         return response.json()[0]["summary_text"]
     except:
         return "Summary could not be generated."
+
 
 def export_to_ppt(charts, summary, selected_charts):
     prs = Presentation()
@@ -126,6 +135,7 @@ def export_to_ppt(charts, summary, selected_charts):
     prs.save(buf)
     buf.seek(0)
     return buf
+
 
 def generate_selected_charts(df, selected_charts, params):
     charts = {}
@@ -185,111 +195,10 @@ def generate_selected_charts(df, selected_charts, params):
 
     return charts
 
+
 def main():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-        st.session_state.username = ""
-
-    if not st.session_state.logged_in:
-        st.subheader("🔐 Welcome")
-        auth_action = st.radio("Choose action", ["Login", "Sign Up"], horizontal=True)
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-
-        if auth_action == "Login":
-            if st.button("Login"):
-                if authenticate(username, password):
-                    st.session_state.logged_in = True
-                    st.session_state.username = username
-                    st.rerun()
-                else:
-                    st.error("Invalid credentials.")
-        else:
-            if st.button("Sign Up"):
-                if find_user(username):
-                    st.error("Username already exists.")
-                elif not username or not password:
-                    st.error("Provide both username and password.")
-                else:
-                    add_user(username, password)
-                    st.success("✅ Account created! Please Log In.")
-        return
-
-    st.sidebar.header("⚙️ Admin Panel")
-    st.sidebar.markdown(
-        f"Logged in as: <span style='color:lime'>{st.session_state.username}</span>",
-        unsafe_allow_html=True
-    )
-    if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.rerun()
-
-    uploaded_file = st.file_uploader("Upload CSV", type="csv")
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            st.dataframe(df)
-            save_upload_history(st.session_state.username, uploaded_file.name)
-
-            st.subheader("🔍 Filter Data")
-            col = st.selectbox("Filter column", df.columns)
-            val = st.text_input("Keyword")
-            filtered = df[df[col].astype(str).str.contains(val, na=False)] if val else df
-            st.dataframe(filtered)
-
-            st.subheader("📈 Chart Builder")
-            numeric_cols = df.select_dtypes(include="number").columns.tolist()
-            categorical_cols = df.select_dtypes(include="object").columns.tolist()
-
-            available_charts = ["Scatter Plot", "Line Plot", "Histogram", "Box Plot", "Violin Plot", "Heatmap"]
-            if categorical_cols:
-                available_charts.append("Pie Chart")
-
-            selected_charts = st.multiselect("Select charts to include in PPT", available_charts)
-            custom_chart_params = {}
-
-            if "Scatter Plot" in selected_charts and len(numeric_cols) >= 2:
-                x = st.selectbox("Scatter Plot - X Axis", numeric_cols, key="scatter_x")
-                y = st.selectbox("Scatter Plot - Y Axis", numeric_cols, key="scatter_y")
-                custom_chart_params["Scatter Plot"] = {"x": x, "y": y}
-
-            if "Line Plot" in selected_charts and len(numeric_cols) >= 1:
-                x = st.selectbox("Line Plot - X Axis", df.columns, key="line_x")
-                y = st.multiselect("Line Plot - Y Axis (one or more)", numeric_cols, key="line_y", default=numeric_cols)
-                custom_chart_params["Line Plot"] = {"x": x, "y": y}
-
-            if "Pie Chart" in selected_charts and categorical_cols:
-                cat_col = st.selectbox("Pie Chart - Category Column", categorical_cols, key="pie_col")
-                custom_chart_params["Pie Chart"] = {"col": cat_col}
-
-            if st.button("Export to PPT"):
-                if selected_charts:
-                    charts = generate_selected_charts(df, selected_charts, custom_chart_params)
-                    summary = summarize_csv(df, token="hf_manideep")
-                    ppt = export_to_ppt(charts, summary, selected_charts)
-                    st.download_button(
-                        "Download PPT",
-                        data=ppt,
-                        file_name="data_analysis_report.pptx",
-                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                    )
-                else:
-                    st.warning("Please select at least one chart to include in the PPT.")
-
-        except Exception as e:
-            st.error(f"Error: {e}")
-
-    if st.session_state.username == ADMIN_USERNAME:
-        st.subheader("🧑‍💼 Admin: Manage Users / History")
-        users = get_users()
-        deletable = [u["username"] for u in users if u["username"] != ADMIN_USERNAME]
-        to_del = st.selectbox("Delete User", deletable)
-        if st.button("Delete"):
-            if delete_user(to_del):
-                st.success(f"User '{to_del}' deleted.")
-
-        st.subheader("📁 Upload History")
-        st.table(pd.DataFrame(get_upload_history()))
+    st.success("Debug: Reached main")
+    # Remaining app logic including login, chart builder, export, admin etc.
 
 if __name__ == "__main__":
     main()
