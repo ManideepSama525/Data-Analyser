@@ -276,6 +276,35 @@ def main():
         if "Pie Chart" in selected:
             cat = st.selectbox("Pie column", cat_cols, key="pie_col")
             chart_params["Pie Chart"] = {"col": cat}
+        # Together.ai ChatGPT-style AI Assistant
+import openai
+
+openai.api_key = st.secrets[""]
+openai.api_base = "https://api.together.xyz/v1"
+
+st.subheader("🤖 Ask AI Assistant")
+ai_prompt = st.text_area("Ask anything related to data analysis, Python, or your dataset")
+
+if st.button("Ask AI"):
+    if not ai_prompt.strip():
+        st.warning("Please enter a prompt.")
+    else:
+        with st.spinner("Thinking..."):
+            try:
+                response = openai.ChatCompletion.create(
+                    model="togethercomputer/llama-2-70b-chat",
+                    messages=[
+                        {"role": "system", "content": "You are a helpful data analysis assistant."},
+                        {"role": "user", "content": ai_prompt}
+                    ],
+                    max_tokens=300,
+                    temperature=0.7
+                )
+                reply = response["choices"][0]["message"]["content"]
+                st.success("💡 AI Response:")
+                st.markdown(reply)
+            except Exception as e:
+                st.error(f"AI failed: {e}")
 
         if st.button("Export to PPT"):
             charts = generate_selected_charts(df, selected, chart_params)
