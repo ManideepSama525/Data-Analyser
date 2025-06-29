@@ -81,19 +81,35 @@ def save_upload_history(username, filename):
 def get_upload_history():
     return history_sheet.get_all_records()
 
-def summarize_csv(df, token):
-    text = df.to_csv(index=False)
-    headers = {"Authorization": f"Bearer {token}"}
-    payload = {"inputs": text}
-    response = requests.post(
-        "https://api-inference.huggingface.co/models/facebook/bart-large-cnn",
-        headers=headers,
-        json=payload
+import openai
+
+def summarize_csv(df):
+    openai.api_key = st.secrets[""]
+    openai.api_base = "https://api.together.xyz/v1"
+
+    # Use first few rows as sample content
+    preview = df.head(10).to_csv(index=False)
+    prompt = (
+        "You are a helpful assistant. Summarize this dataset as if for a project report. "
+        "Mention number of rows/columns, types of data, and what it looks like.\n\n"
+        f"{preview}"
     )
+
     try:
-        return response.json()[0]["summary_text"]
-    except:
-        return "Summary could not be generated."
+        response = openai.ChatCompletion.create(
+            model="togethercomputer/llama-2-70b-chat",
+            messages=[
+                {"role": "system", "content": "You are a data analysis assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=300,
+            temperature=0.7
+        )
+        summary = response.choices[0].message.content
+        return summary
+    except Exception as e:
+        return f"Summary generation failed: {e}"
+
 
 def export_to_ppt(charts, summary, selected_charts):
     prs = Presentation()
