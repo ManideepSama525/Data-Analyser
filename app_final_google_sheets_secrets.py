@@ -10,6 +10,7 @@ st.set_page_config(
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import bcrypt
+import openai
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
