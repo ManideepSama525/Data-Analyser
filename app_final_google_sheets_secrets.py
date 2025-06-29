@@ -84,7 +84,7 @@ def get_upload_history():
 import openai
 
 def summarize_csv(df):
-    openai.api_key = st.secrets[""]
+    openai.api_key = st.secrets["e67ff1aa4282f59b4596717f7ae8e534207a2f8587bfceaae14d770be8ddea58"]
     openai.api_base = "https://api.together.xyz/v1"
 
     # Use first few rows as sample content
