@@ -10,7 +10,6 @@ st.set_page_config(
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import bcrypt
-import openai
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -20,6 +19,7 @@ import io
 import datetime
 import requests
 import json
+from openai import OpenAI
 
 st.markdown("<style>footer{visibility:hidden;}</style>", unsafe_allow_html=True)
 st.title("📊 Data Analyzer")
@@ -82,15 +82,12 @@ def save_upload_history(username, filename):
 def get_upload_history():
     return history_sheet.get_all_records()
 
-import openai
-
 def summarize_csv(df):
-    st.secrets["together"]["together_api_key"]
+    client = OpenAI(
+        api_key=st.secrets["together"]["together_api_key"],
+        base_url="https://api.together.xyz/v1"
+    )
 
-
-    openai.api_base = "https://api.together.xyz/v1"
-
-    # Use first few rows as sample content
     preview = df.head(10).to_csv(index=False)
     prompt = (
         "You are a helpful assistant. Summarize this dataset as if for a project report. "
@@ -99,7 +96,7 @@ def summarize_csv(df):
     )
 
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="togethercomputer/llama-2-70b-chat",
             messages=[
                 {"role": "system", "content": "You are a data analysis assistant."},
@@ -108,11 +105,9 @@ def summarize_csv(df):
             max_tokens=300,
             temperature=0.7
         )
-        summary = response.choices[0].message.content
-        return summary
+        return response.choices[0].message.content
     except Exception as e:
         return f"Summary generation failed: {e}"
-
 
 def export_to_ppt(charts, summary, selected_charts):
     prs = Presentation()
@@ -279,43 +274,40 @@ def main():
         if "Pie Chart" in selected:
             cat = st.selectbox("Pie column", cat_cols, key="pie_col")
             chart_params["Pie Chart"] = {"col": cat}
-        # Together.ai ChatGPT-style AI Assistant
-import openai
 
-st.secrets["together"]["together_api_key"]
+        st.subheader("🤖 Ask AI Assistant")
+        ai_prompt = st.text_area("Ask anything related to data analysis, Python, or your dataset")
 
-
-openai.api_base = "https://api.together.xyz/v1"
-
-st.subheader("🤖 Ask AI Assistant")
-ai_prompt = st.text_area("Ask anything related to data analysis, Python, or your dataset")
-
-if st.button("Ask AI"):
-    if not ai_prompt.strip():
-        st.warning("Please enter a prompt.")
-    else:
-        with st.spinner("Thinking..."):
-            try:
-                response = openai.ChatCompletion.create(
-                    model="togethercomputer/llama-2-70b-chat",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful data analysis assistant."},
-                        {"role": "user", "content": ai_prompt}
-                    ],
-                    max_tokens=300,
-                    temperature=0.7
-                )
-                reply = response["choices"][0]["message"]["content"]
-                st.success("💡 AI Response:")
-                st.markdown(reply)
-            except Exception as e:
-                st.error(f"AI failed: {e}")
+        if st.button("Ask AI"):
+            if not ai_prompt.strip():
+                st.warning("Please enter a prompt.")
+            else:
+                with st.spinner("Thinking..."):
+                    try:
+                        client = OpenAI(
+                            api_key=st.secrets["together"]["together_api_key"],
+                            base_url="https://api.together.xyz/v1"
+                        )
+                        response = client.chat.completions.create(
+                            model="togethercomputer/llama-2-70b-chat",
+                            messages=[
+                                {"role": "system", "content": "You are a helpful data analysis assistant."},
+                                {"role": "user", "content": ai_prompt}
+                            ],
+                            max_tokens=300,
+                            temperature=0.7
+                        )
+                        reply = response.choices[0].message.content
+                        st.success("💡 AI Response:")
+                        st.markdown(reply)
+                    except Exception as e:
+                        st.error(f"AI failed: {e}")
 
         if st.button("Export to PPT"):
             charts = generate_selected_charts(df, selected, chart_params)
-            summary = summarize_csv(df, token="hf_manideep")
+            summary = summarize_csv(df)
             ppt = export_to_ppt(charts, summary, selected)
-            st.download_button("📥 Download PPT", data=ppt, file_name="data_analysis_report.pptx")
+            st.download_button("📅 Download PPT", data=ppt, file_name="data_analysis_report.pptx")
 
     if st.session_state.username == ADMIN_USERNAME:
         st.subheader("🧑‍💼 Admin: Manage Users / History")
