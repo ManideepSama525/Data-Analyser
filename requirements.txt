@@ -10,3 +10,4 @@ bcrypt
 google-auth
 oauth2client
 toml
+openai
