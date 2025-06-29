@@ -85,7 +85,8 @@ def get_upload_history():
 import openai
 
 def summarize_csv(df):
-    openai.api_key = st.secrets["together"]["e67ff1aa4282f59b4596717f7ae8e534207a2f8587bfceaae14d770be8ddea58"]  
+    st.secrets["together"]["together_api_key"]
+
 
     openai.api_base = "https://api.together.xyz/v1"
 
@@ -281,7 +282,8 @@ def main():
         # Together.ai ChatGPT-style AI Assistant
 import openai
 
-openai.api_key = st.secrets["together"]["e67ff1aa4282f59b4596717f7ae8e534207a2f8587bfceaae14d770be8ddea58"]  
+st.secrets["together"]["together_api_key"]
+
 
 openai.api_base = "https://api.together.xyz/v1"
 
