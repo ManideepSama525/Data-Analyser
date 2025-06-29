@@ -279,7 +279,7 @@ def main():
         # Together.ai ChatGPT-style AI Assistant
 import openai
 
-openai.api_key = st.secrets[""]
+openai.api_key = st.secrets["e67ff1aa4282f59b4596717f7ae8e534207a2f8587bfceaae14d770be8ddea58"]
 openai.api_base = "https://api.together.xyz/v1"
 
 st.subheader("🤖 Ask AI Assistant")
