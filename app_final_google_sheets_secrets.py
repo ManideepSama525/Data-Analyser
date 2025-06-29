@@ -97,7 +97,7 @@ def summarize_csv(df):
 
     try:
         response = client.chat.completions.create(
-            model="togethercomputer/llama-2-70b-chat",
+            model="mistralai/Mistral-7B-Instruct-v0.1",
             messages=[
                 {"role": "system", "content": "You are a data analysis assistant."},
                 {"role": "user", "content": prompt}
@@ -289,7 +289,7 @@ def main():
                             base_url="https://api.together.xyz/v1"
                         )
                         response = client.chat.completions.create(
-                            model="togethercomputer/llama-2-70b-chat",
+                            model="mistralai/Mistral-7B-Instruct-v0.1",
                             messages=[
                                 {"role": "system", "content": "You are a helpful data analysis assistant."},
                                 {"role": "user", "content": ai_prompt}
